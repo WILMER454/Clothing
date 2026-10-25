@@ -1,0 +1,3529 @@
+local S = {
+    Players = game:GetService("Players"),
+    RunService = game:GetService("RunService"),
+    TweenService = game:GetService("TweenService"),
+    ReplicatedStorage = game:GetService("ReplicatedStorage"),
+    CoreGui = game:GetService("CoreGui"),
+    UserInputService = game:GetService("UserInputService"),
+    AvatarEditorService = game:GetService("AvatarEditorService"),
+    MarketplaceService = game:GetService("MarketplaceService"),
+}
+
+local LocalPlayer = S.Players.LocalPlayer
+
+local COLORS = {
+    Background = Color3.fromRGB(10, 9, 15),
+    Panel = Color3.fromRGB(17, 14, 25),
+    Card = Color3.fromRGB(27, 23, 39),
+    CardHover = Color3.fromRGB(40, 31, 57),
+    Accent = Color3.fromRGB(157, 70, 255),
+    AccentDark = Color3.fromRGB(87, 35, 150),
+    Text = Color3.fromRGB(245, 242, 255),
+    Muted = Color3.fromRGB(166, 157, 184),
+    Success = Color3.fromRGB(64, 210, 135),
+    Danger = Color3.fromRGB(235, 78, 108),
+}
+
+local Language = "es"
+local function tr(es, en)
+    return Language == "es" and es or en
+end
+
+local ACCS_SAVE = {
+    { name = "Headless", label = "HEADLESS", id = 134082579, property = "Head", kind = "property" },
+    { name = "Korblox", label = "KORBLOX", id = 139607718, property = "RightLeg", kind = "property" },
+    { name = "IceHorn", label = "ICE HORN", id = 74891470, accessoryType = Enum.AccessoryType.Hat },
+    { name = "ToxHorn", label = "TOX HORN", id = 1744060292, accessoryType = Enum.AccessoryType.Hat },
+    { name = "RedHorn", label = "RED HORN", id = 215718515, accessoryType = Enum.AccessoryType.Hat },
+    { name = "HPB", label = "HPB", id = 10159610478, accessoryType = Enum.AccessoryType.Hat },
+    { name = "TC", label = "TC", id = 10159617728, accessoryType = Enum.AccessoryType.Hat },
+    { name = "Crown", label = "CROWN", id = 10159600649, accessoryType = Enum.AccessoryType.Hat },
+    { name = "BirthdayTimeFedora", label = "BIRTHDAY TIME FEDORA", id = 116109904627748, accessoryType = Enum.AccessoryType.Hat },
+    { name = "Fairy", label = "FAIRY", id = 141742418, accessoryType = Enum.AccessoryType.Back },
+    { name = "WitchHat", label = "WITCH HAT", id = 305888394, accessoryType = Enum.AccessoryType.Hat },
+    { name = "ArcaneFedora", label = "ARCANE FEDORA", id = 73030805068953, accessoryType = Enum.AccessoryType.Hat },
+    { name = "TreasureFinderFedora", label = "TREASURE FINDER FEDORA", id = 17514347127, accessoryType = Enum.AccessoryType.Hat },
+    { name = "FlamingPinkHornedHelmet", label = "FLAMING PINK HORNED HELMET", id = 17756304457, accessoryType = Enum.AccessoryType.Hat },
+    { name = "StormbreakHornsOfTheTempestSkies", label = "STORMBREAK HORNS OF THE TEMPEST SKIES", id = 76479271580913, accessoryType = Enum.AccessoryType.Hat },
+    { name = "BluesteelHornsOfPwnage", label = "BLUESTEEL HORNS OF PWNAGE", id = 233705354, accessoryType = Enum.AccessoryType.Hat },
+    { name = "AgonizinglyFrostedBirthdayBucketOfDoom", label = "AGONIZINGLY FROSTED BIRTHDAY BUCKET OF DOOM", id = 135609592452959, accessoryType = Enum.AccessoryType.Hat },
+    { name = "IceValkyrie", label = "ICE VALKYRIE", id = 4390891467, accessoryType = Enum.AccessoryType.Hat },
+    { name = "VioletValkyrie", label = "VIOLET VALKYRIE", id = 1402432199, accessoryType = Enum.AccessoryType.Hat },
+    { name = "SparkleTimeValkyrie", label = "SPARKLE TIME VALKYRIE", id = 1180433861, accessoryType = Enum.AccessoryType.Hat },
+    { name = "ClassicRobloxFedora", label = "THE CLASSIC ROBLOX FEDORA", id = 1029025, accessoryType = Enum.AccessoryType.Hat },
+    { name = "ValkyrieHelm", label = "VALKYRIE HELM", id = 1365767, accessoryType = Enum.AccessoryType.Hat },
+}
+
+local ITEMS = ACCS_SAVE
+local ITEM_BY_NAME = {}
+local ITEM_BY_ID = {}
+for _, item in ipairs(ITEMS) do
+    ITEM_BY_NAME[item.name] = item
+    ITEM_BY_ID[item.id] = item
+end
+
+local Enabled = {}
+local Transforms = {}
+local SavedFits = {}
+SavedFits._OriginalDescription = nil
+SavedFits._ActiveFit = nil
+local FitNumber = 0
+for _, item in ipairs(ITEMS) do
+    Enabled[item.name] = false
+    Transforms[item.name] = {
+        Scale = 1,
+        PosX = 0, PosY = 0, PosZ = 0,
+        RotX = 0, RotY = 0, RotZ = 0,
+    }
+end
+
+local function registerItem(item)
+    if not item or not item.id or not item.name then return nil end
+    if ITEM_BY_ID[item.id] then return ITEM_BY_ID[item.id] end
+    table.insert(ITEMS, item)
+    ITEM_BY_NAME[item.name] = item
+    ITEM_BY_ID[item.id] = item
+    Enabled[item.name] = false
+    Transforms[item.name] = {
+        Scale = 1,
+        PosX = 0, PosY = 0, PosZ = 0,
+        RotX = 0, RotY = 0, RotZ = 0,
+    }
+    return item
+end
+
+local SelectedItem
+local CurrentTab = "Catalog"
+local ShowingSearchResults = false
+local AssetCache = {}
+local BaseWelds = setmetatable({}, { __mode = "k" })
+local CharacterConnections = {}
+local AccessoryItems = setmetatable({}, { __mode = "k" })
+local ApplyTokens = {}
+local PendingAccessories = {}
+PendingAccessories._Disabled = {}
+local ApplySequence = 0
+local BundleEnabled = {}
+local BundleItemNames = {}
+
+local function disconnectCharacterConnections()
+    for _, connection in ipairs(CharacterConnections) do
+        connection:Disconnect()
+    end
+    table.clear(CharacterConnections)
+end
+
+local function round2(value)
+    return math.floor(value * 100 + 0.5) / 100
+end
+
+local function getCharacter()
+    return LocalPlayer.Character
+end
+
+local function getHandle(accessory)
+    if not accessory then return nil end
+    return accessory:FindFirstChild("Handle") or accessory:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function isAccessoryForItem(child, itemName)
+    if not child or not child:IsA("Accessory") then return false end
+    if AccessoryItems[child] == itemName then return true end
+    if child:GetAttribute("XyroItem") == itemName then return true end
+    if child.Name == itemName then return true end
+    local item = ITEM_BY_NAME[itemName]
+    local assetId = item and item.id
+    if child:GetAttribute("XyroAssetId") == assetId then return true end
+    if tostring(child:GetAttribute("AssetId")) == tostring(assetId) then return true end
+    local handle = getHandle(child)
+    if not handle then return false end
+    if handle:FindFirstChild("XyroWeld_" .. itemName) then return true end
+    if tostring(handle:GetAttribute("AssetId")) == tostring(assetId) then return true end
+    if S.accessoryMatchesItemAsset and S.accessoryMatchesItemAsset(child, item) then return true end
+    return false
+end
+
+local function findItemAccessories(itemName)
+    local character = getCharacter()
+    local found = {}
+    if not character then return found end
+    for _, child in ipairs(character:GetChildren()) do
+        if isAccessoryForItem(child, itemName) then
+            table.insert(found, child)
+        end
+    end
+    return found
+end
+
+local function removeItemAccessories(itemName)
+    local found = findItemAccessories(itemName)
+    for _, accessory in ipairs(found) do
+        accessory:Destroy()
+    end
+    if #found > 0 then return end
+
+    local item = ITEM_BY_NAME[itemName]
+    local character = getCharacter()
+    local property = item and S.getCatalogProperty and S.getCatalogProperty(item)
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not item or not item.accessoryType or not property or not humanoid then return end
+
+    local isEquipped = false
+    pcall(function()
+        local description = humanoid:GetAppliedDescription()
+        local equippedIds = tostring(description[property] or "")
+        isEquipped = string.find(
+            "," .. equippedIds .. ",",
+            "," .. tostring(item.id) .. ",",
+            1,
+            true
+        ) ~= nil
+    end)
+    if not isEquipped then return end
+
+    for _, child in ipairs(character:GetChildren()) do
+        if child:IsA("Accessory") and child.AccessoryType == item.accessoryType then
+            child:Destroy()
+        end
+    end
+end
+
+local function deduplicateItem(itemName)
+    local found = findItemAccessories(itemName)
+    if #found < 2 then return found[1] end
+
+    local keep
+    for _, accessory in ipairs(found) do
+        if not accessory:GetAttribute("XyroFallback") then
+            keep = accessory
+            break
+        end
+    end
+    keep = keep or found[1]
+
+    for _, accessory in ipairs(found) do
+        if accessory ~= keep then
+            accessory:Destroy()
+        end
+    end
+    return keep
+end
+
+local function tagAccessory(accessory, itemName, isFallback)
+    if not accessory then return end
+    local item = ITEM_BY_NAME[itemName]
+    AccessoryItems[accessory] = itemName
+    accessory.Name = itemName
+    accessory:SetAttribute("XyroItem", itemName)
+    if item then
+        accessory:SetAttribute("XyroAssetId", item.id)
+    end
+    accessory:SetAttribute("XyroFallback", isFallback == true)
+end
+
+local function snapshotAccessories(character)
+    local snapshot = {}
+    if not character then return snapshot end
+    for _, child in ipairs(character:GetChildren()) do
+        if child:IsA("Accessory") then
+            snapshot[child] = true
+        end
+    end
+    return snapshot
+end
+
+local function isCompatibleAccessory(accessory, item)
+    if not accessory or not accessory:IsA("Accessory") then return false end
+    if not item.accessoryType then return true end
+    local accessoryType = accessory.AccessoryType
+    return accessoryType == item.accessoryType or accessoryType == Enum.AccessoryType.Unknown
+end
+
+local function findNewAccessory(item, snapshot)
+    local character = getCharacter()
+    if not character then return nil end
+    for _, child in ipairs(character:GetChildren()) do
+        if child:IsA("Accessory")
+            and not snapshot[child]
+            and not child:GetAttribute("XyroFallback")
+            and not child:GetAttribute("XyroItem")
+            and not AccessoryItems[child]
+            and isCompatibleAccessory(child, item) then
+            return child
+        end
+    end
+    return nil
+end
+
+local function findRemote()
+    return S.ReplicatedStorage:FindFirstChild("CatalogOnApplyToRealHumanoid", true)
+end
+
+local function applyCatalogProperty(property, assetId)
+    local remote = findRemote()
+    if remote then
+        pcall(function()
+            remote:FireServer({
+                Property = property,
+                AssetId = assetId,
+            })
+        end)
+    end
+end
+
+S.getCatalogProperty = function(item)
+    if not item then return nil end
+    local property = item.property
+    local supported = {
+        GraphicTShirt = true,
+        Shirt = true,
+        Pants = true,
+        TShirtAccessory = true,
+        ShirtAccessory = true,
+        PantsAccessory = true,
+        JacketAccessory = true,
+        SweaterAccessory = true,
+        ShortsAccessory = true,
+        DressSkirtAccessory = true,
+        LeftShoeAccessory = true,
+        RightShoeAccessory = true,
+        Head = true,
+        Torso = true,
+        LeftArm = true,
+        RightArm = true,
+        LeftLeg = true,
+        RightLeg = true,
+        HatAccessory = true,
+        HairAccessory = true,
+        FaceAccessory = true,
+        NeckAccessory = true,
+        ShoulderAccessory = true,
+        FrontAccessory = true,
+        BackAccessory = true,
+        WaistAccessory = true,
+        EyebrowAccessory = true,
+        EyelashAccessory = true,
+    }
+    if supported[property] then return property end
+
+    local assetType = string.lower(tostring(item.assetType or ""))
+    local assetTypeId = tonumber(item.assetType)
+    if string.find(assetType, "tshirtaccessory", 1, true) then
+        return "TShirtAccessory"
+    elseif assetTypeId == 2 or string.find(assetType, "tshirt", 1, true) then
+        return "GraphicTShirt"
+    elseif assetTypeId == 11 or string.find(assetType, "shirt", 1, true) then
+        return string.find(assetType, "accessory", 1, true) and "ShirtAccessory" or "Shirt"
+    elseif assetTypeId == 12 or string.find(assetType, "pants", 1, true) then
+        return string.find(assetType, "accessory", 1, true) and "PantsAccessory" or "Pants"
+    elseif string.find(assetType, "jacket", 1, true) then
+        return "JacketAccessory"
+    elseif string.find(assetType, "sweater", 1, true) then
+        return "SweaterAccessory"
+    elseif string.find(assetType, "shorts", 1, true) then
+        return "ShortsAccessory"
+    elseif string.find(assetType, "dress", 1, true) or string.find(assetType, "skirt", 1, true) then
+        return "DressSkirtAccessory"
+    elseif string.find(assetType, "leftshoe", 1, true) then
+        return "LeftShoeAccessory"
+    elseif string.find(assetType, "rightshoe", 1, true) then
+        return "RightShoeAccessory"
+    elseif assetTypeId == 17 or assetTypeId == 79 then
+        return "Head"
+    elseif assetTypeId == 31 then
+        return "RightLeg"
+    elseif string.find(assetType, "head", 1, true) then
+        return "Head"
+    elseif string.find(assetType, "torso", 1, true) then
+        return "Torso"
+    elseif string.find(assetType, "leftarm", 1, true) then
+        return "LeftArm"
+    elseif string.find(assetType, "rightarm", 1, true) then
+        return "RightArm"
+    elseif string.find(assetType, "leftleg", 1, true) then
+        return "LeftLeg"
+    elseif string.find(assetType, "rightleg", 1, true) then
+        return "RightLeg"
+    end
+    return nil
+end
+
+S.applyLocalClassicClothing = function(item, property, state)
+    if not property then return end
+    local character = getCharacter()
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+    pcall(function()
+        local description = humanoid:GetAppliedDescription()
+        if string.find(property, "Accessory", 1, true) then
+            local current = tostring(description[property] or "")
+            local target = tostring(item.id)
+            local ids = {}
+            local exists = false
+            for id in string.gmatch(current, "%d+") do
+                if id == target then
+                    exists = true
+                    if not state then
+                        continue
+                    end
+                end
+                table.insert(ids, id)
+            end
+            if state and not exists then
+                table.insert(ids, target)
+            end
+            description[property] = table.concat(ids, ",")
+            humanoid:ApplyDescription(description)
+            return
+        end
+        local values = {
+            GraphicTShirt = 0,
+            Shirt = 0,
+            Pants = 0,
+        }
+        for _, knownItem in ipairs(ITEMS) do
+            if Enabled[knownItem.name] then
+                local knownProperty = S.getCatalogProperty(knownItem)
+                if values[knownProperty] ~= nil then
+                    values[knownProperty] = knownItem.id
+                end
+            end
+        end
+        values[property] = state and item.id or values[property]
+        description.GraphicTShirt = values.GraphicTShirt
+        description.Shirt = values.Shirt
+        description.Pants = values.Pants
+        if values[property] == nil then
+            description[property] = state and item.id or 0
+        end
+        humanoid:ApplyDescription(description)
+    end)
+end
+
+local function applyCatalogAccessoryData(item, assetId)
+    local remote = findRemote()
+    if remote then
+        pcall(function()
+            remote:FireServer({
+                AccessoryData = {
+                    Order = 1,
+                    AccessoryType = item.accessoryType or Enum.AccessoryType.Hat,
+                    AssetId = assetId,
+                },
+            })
+        end)
+    end
+end
+
+local function applyGenericCatalogItem(item, state)
+    local property = S.getCatalogProperty(item)
+    if property then
+        applyCatalogProperty(property, state and item.id or 0)
+        S.applyLocalClassicClothing(item, property, state)
+        return
+    end
+    local remote = findRemote()
+    if not remote then return end
+    pcall(function()
+        remote:FireServer({
+            CatalogData = {
+                AssetId = item.id,
+                AssetType = item.assetType,
+                Category = item.searchCategory,
+                Enabled = state,
+            },
+            AssetId = item.id,
+            AssetType = item.assetType,
+            Category = item.searchCategory,
+            Enabled = state,
+        })
+    end)
+end
+
+local function loadAsset(assetId)
+    if AssetCache[assetId] then
+        return AssetCache[assetId]:Clone()
+    end
+
+    local object
+    pcall(function()
+        local oldIdentity = getidentity and getidentity() or nil
+        if setidentity then setidentity(6) end
+        local objects = game:GetObjects("rbxassetid://" .. tostring(assetId))
+        if setidentity and oldIdentity then setidentity(oldIdentity) end
+        if objects and #objects > 0 then
+            local root = objects[1]
+            object = root:IsA("Accessory") and root
+                or root:FindFirstChildWhichIsA("Accessory", true)
+                or root:FindFirstChildWhichIsA("Hat", true)
+        end
+    end)
+
+    if object then
+        AssetCache[assetId] = object
+        return object:Clone()
+    end
+    return nil
+end
+
+S.getAccessorySignature = function(accessory)
+    local handle = getHandle(accessory)
+    if not handle then return nil end
+    local mesh = handle:FindFirstChildWhichIsA("SpecialMesh")
+    local meshId = ""
+    local textureId = ""
+    pcall(function() meshId = tostring(handle.MeshId or "") end)
+    pcall(function() textureId = tostring(handle.TextureID or "") end)
+    return {
+        MeshId = meshId,
+        TextureId = textureId,
+        SpecialMeshId = mesh and tostring(mesh.MeshId or "") or "",
+        SpecialTextureId = mesh and tostring(mesh.TextureId or "") or "",
+    }
+end
+
+S.accessoryMatchesItemAsset = function(accessory, item)
+    if not item or not item.id then return false end
+    local source = loadAsset(item.id)
+    if not source then return false end
+    local currentSignature = S.getAccessorySignature(accessory)
+    local sourceSignature = S.getAccessorySignature(source)
+    if not currentSignature or not sourceSignature then return false end
+    if sourceSignature.MeshId ~= "" and currentSignature.MeshId == sourceSignature.MeshId then
+        return true
+    end
+    if sourceSignature.SpecialMeshId ~= "" and currentSignature.SpecialMeshId == sourceSignature.SpecialMeshId then
+        return true
+    end
+    if sourceSignature.TextureId ~= "" and currentSignature.TextureId == sourceSignature.TextureId
+        and sourceSignature.SpecialTextureId ~= ""
+        and currentSignature.SpecialTextureId == sourceSignature.SpecialTextureId then
+        return true
+    end
+    return false
+end
+
+S.removeCatalogInstances = function(item)
+    local character = getCharacter()
+    if not character or not item then return end
+    local property = S.getCatalogProperty(item)
+    local className
+    if property == "GraphicTShirt" then
+        className = "ShirtGraphic"
+    elseif property == "Shirt" then
+        className = "Shirt"
+    elseif property == "Pants" then
+        className = "Pants"
+    end
+    if className then
+        for _, child in ipairs(character:GetChildren()) do
+            if child:IsA(className) then
+                child:Destroy()
+            end
+        end
+    end
+end
+
+local function getBodyAttachment(character, handleAttachment)
+    if not character or not handleAttachment then return nil end
+    return character:FindFirstChild(handleAttachment.Name, true)
+end
+
+local function makeFallbackWeld(accessory, bodyPart, itemName)
+    local handle = getHandle(accessory)
+    if not handle or not bodyPart then return nil end
+
+    for _, child in ipairs(handle:GetChildren()) do
+        if child:IsA("Weld") or child:IsA("WeldConstraint") then
+            child:Destroy()
+        end
+    end
+
+    local handleAttachment = handle:FindFirstChildWhichIsA("Attachment")
+    local bodyAttachment = getBodyAttachment(bodyPart.Parent, handleAttachment)
+    local weld = Instance.new("Weld")
+    weld.Name = "XyroWeld_" .. itemName
+    weld.Part0 = handle
+    weld.Part1 = bodyPart
+    weld.C0 = handleAttachment and handleAttachment.CFrame or CFrame.new()
+    weld.C1 = bodyAttachment and bodyAttachment.CFrame or CFrame.new()
+    weld.Parent = handle
+    return weld
+end
+
+local function findWeld(accessory, itemName)
+    local handle = getHandle(accessory)
+    if not handle then return nil end
+    local named = handle:FindFirstChild("XyroWeld_" .. itemName)
+    if named and named:IsA("Weld") then return named end
+    for _, child in ipairs(handle:GetChildren()) do
+        if child:IsA("Weld") or child:IsA("Motor6D") then
+            return child
+        end
+    end
+    return nil
+end
+
+local function applyTransforms(accessory, itemName)
+    if not accessory then return end
+    local transform = Transforms[itemName]
+    if not transform then return end
+    local handle = getHandle(accessory)
+    if not handle then return end
+
+    accessory:SetAttribute("XyroItem", itemName)
+    local weld = findWeld(accessory, itemName)
+    if weld then
+        if not BaseWelds[weld] then
+            BaseWelds[weld] = { C0 = weld.C0, C1 = weld.C1 }
+        end
+        local base = BaseWelds[weld]
+        local offset = CFrame.new(transform.PosX, transform.PosY, transform.PosZ)
+            * CFrame.Angles(
+                math.rad(transform.RotX),
+                math.rad(transform.RotY),
+                math.rad(transform.RotZ)
+            )
+        weld.C0 = base.C0 * offset
+        weld.C1 = base.C1
+    end
+
+    local originalSize = handle:GetAttribute("XyroOriginalSize")
+    if not originalSize then
+        originalSize = handle.Size
+        handle:SetAttribute("XyroOriginalSize", originalSize)
+    end
+    handle.Size = originalSize * math.max(0.05, transform.Scale)
+
+    local mesh = handle:FindFirstChildWhichIsA("SpecialMesh")
+    if mesh then
+        local originalMeshScale = mesh:GetAttribute("XyroOriginalScale")
+        if not originalMeshScale then
+            originalMeshScale = mesh.Scale
+            mesh:SetAttribute("XyroOriginalScale", originalMeshScale)
+        end
+        mesh.Scale = originalMeshScale * math.max(0.05, transform.Scale)
+    end
+end
+
+local function attachFallback(item)
+    local character = getCharacter()
+    if not character then return nil end
+    local accessory = loadAsset(item.id)
+    if not accessory then return nil end
+
+    tagAccessory(accessory, item.name, true)
+
+    local handle = getHandle(accessory)
+    if not handle then
+        accessory:Destroy()
+        return nil
+    end
+    handle.CanCollide = false
+    handle.Massless = true
+    handle.Anchored = false
+    handle.Transparency = 0
+
+    local bodyPart
+    if item.name == "Korblox" then
+        bodyPart = character:FindFirstChild("RightFoot")
+            or character:FindFirstChild("RightLowerLeg")
+            or character:FindFirstChild("Right Leg")
+    else
+        bodyPart = character:FindFirstChild("Head")
+    end
+    if not bodyPart then
+        accessory:Destroy()
+        return nil
+    end
+
+    accessory.Parent = character
+    makeFallbackWeld(accessory, bodyPart, item.name)
+    applyTransforms(accessory, item.name)
+    return accessory
+end
+
+local function restoreBodyPart(item, visible)
+    local character = getCharacter()
+    if not character then return end
+    if item.property == "Head" then
+        local head = character:FindFirstChild("Head")
+        if head then
+            head.Transparency = visible and 0 or 1
+            local face = head:FindFirstChild("face")
+            if face then face.Transparency = visible and 0 or 1 end
+        end
+    elseif item.property == "RightLeg" then
+        for _, partName in ipairs({ "RightLowerLeg", "RightUpperLeg", "RightFoot", "Right Leg" }) do
+            local part = character:FindFirstChild(partName)
+            if part then part.Transparency = visible and 0 or 1 end
+        end
+    end
+end
+
+local function toggleItem(itemName, state)
+    local item = ITEM_BY_NAME[itemName]
+    if not item then return end
+    ApplyTokens[itemName] = (ApplyTokens[itemName] or 0) + 1
+    local token = ApplyTokens[itemName]
+    ApplySequence = ApplySequence + 1
+    PendingAccessories[itemName] = nil
+    Enabled[itemName] = state
+    PendingAccessories._Disabled[itemName] = not state
+    removeItemAccessories(itemName)
+    S.removeCatalogInstances(item)
+    local descriptionProperty = S.getCatalogProperty(item)
+    if item.kind ~= "catalog" and descriptionProperty then
+        S.applyLocalClassicClothing(item, descriptionProperty, state)
+    end
+
+    if not state then
+        if SelectedItem == itemName then SelectedItem = nil end
+        if item.kind == "catalog" then
+            applyGenericCatalogItem(item, false)
+        elseif item.kind == "property" then
+            applyCatalogProperty(item.property, 0)
+            restoreBodyPart(item, true)
+        else
+            applyCatalogAccessoryData(item, 0)
+        end
+        return
+    end
+
+    if item.kind == "catalog" then
+        applyGenericCatalogItem(item, true)
+        return
+    end
+
+    if item.kind == "property" then
+        applyCatalogProperty(item.property, item.id)
+        restoreBodyPart(item, false)
+        if itemName == "Korblox" then
+            attachFallback(item)
+        end
+        return
+    end
+
+    local character = getCharacter()
+    local snapshot = snapshotAccessories(character)
+    PendingAccessories[itemName] = {
+        token = token,
+        snapshot = snapshot,
+        order = ApplySequence,
+    }
+    applyCatalogAccessoryData(item, item.id)
+    task.delay(1.25, function()
+        if not Enabled[itemName] or ApplyTokens[itemName] ~= token then return end
+        local accessory = deduplicateItem(itemName)
+        if not accessory then
+            accessory = findNewAccessory(item, snapshot)
+            if accessory then
+                tagAccessory(accessory, itemName, false)
+            end
+        end
+        if not accessory then
+            accessory = attachFallback(item)
+        end
+        if accessory then
+            deduplicateItem(itemName)
+            applyTransforms(accessory, itemName)
+        end
+        task.delay(5, function()
+            local pending = PendingAccessories[itemName]
+            if pending and pending.token == token then
+                PendingAccessories[itemName] = nil
+            end
+        end)
+    end)
+end
+
+local function handleCharacterAdded(character)
+    disconnectCharacterConnections()
+    table.insert(CharacterConnections, character.ChildAdded:Connect(function(child)
+        if not child:IsA("Accessory") then return end
+        task.defer(function()
+            local matchedItem
+            local matchedOrder
+            for _, item in ipairs(ITEMS) do
+                local pending = PendingAccessories[item.name]
+                local isNewRemote = Enabled[item.name]
+                    and pending
+                    and pending.token == ApplyTokens[item.name]
+                    and not pending.snapshot[child]
+                    and not child:GetAttribute("XyroFallback")
+                    and not child:GetAttribute("XyroItem")
+                    and not AccessoryItems[child]
+                    and isCompatibleAccessory(child, item)
+                if isNewRemote and (not matchedOrder or pending.order < matchedOrder) then
+                    matchedItem = item
+                    matchedOrder = pending.order
+                end
+            end
+            if matchedItem then
+                tagAccessory(child, matchedItem.name, false)
+            end
+            for _, item in ipairs(ITEMS) do
+                if Enabled[item.name] and isAccessoryForItem(child, item.name) then
+                    local current = deduplicateItem(item.name)
+                    if current then applyTransforms(current, item.name) end
+                end
+            end
+        end)
+    end))
+
+    local humanoid = character:WaitForChild("Humanoid", 10)
+    if not humanoid then return end
+    task.wait(2.5)
+    local firstCharacter = not SavedFits._OriginalDescription
+    if firstCharacter then
+        pcall(function()
+            local description = humanoid:GetAppliedDescription()
+            SavedFits._OriginalDescription = description:Clone()
+        end)
+    end
+
+    if not SavedFits._ActiveFit then
+        if not firstCharacter and SavedFits._OriginalDescription then
+            pcall(function()
+                humanoid:ApplyDescription(SavedFits._OriginalDescription)
+            end)
+        end
+        for _, item in ipairs(ITEMS) do
+            Enabled[item.name] = false
+            PendingAccessories._Disabled[item.name] = nil
+        end
+        return
+    end
+
+    for _, item in ipairs(ITEMS) do
+        local savedItem = SavedFits._ActiveFit.items[item.name]
+        if savedItem then
+            if savedItem.transform then
+                Transforms[item.name] = {
+                    Scale = savedItem.transform.Scale,
+                    PosX = savedItem.transform.PosX,
+                    PosY = savedItem.transform.PosY,
+                    PosZ = savedItem.transform.PosZ,
+                    RotX = savedItem.transform.RotX,
+                    RotY = savedItem.transform.RotY,
+                    RotZ = savedItem.transform.RotZ,
+                }
+            end
+            toggleItem(item.name, true)
+        else
+            toggleItem(item.name, false)
+        end
+        task.wait(0.08)
+    end
+end
+
+local oldGui = S.CoreGui:FindFirstChild("XyroAccessoryEditor")
+if oldGui then oldGui:Destroy() end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "XyroAccessoryEditor"
+ScreenGui.ResetOnSpawn = false
+pcall(function() ScreenGui.Parent = S.CoreGui end)
+if not ScreenGui.Parent then
+    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+end
+
+local function corner(parent, radius)
+    local value = Instance.new("UICorner")
+    value.CornerRadius = UDim.new(0, radius or 8)
+    value.Parent = parent
+    return value
+end
+
+local function stroke(parent, color, thickness)
+    local value = Instance.new("UIStroke")
+    value.Color = color
+    value.Thickness = thickness or 1
+    value.Transparency = 0.15
+    value.Parent = parent
+    return value
+end
+
+local function makeDraggable(object, excludedObject, excludedObject2)
+    local dragging, dragStart, startPosition, dragInput
+    object.InputBegan:Connect(function(input)
+        local insideFirst = excludedObject
+            and input.Position.X >= excludedObject.AbsolutePosition.X
+            and input.Position.X <= excludedObject.AbsolutePosition.X + excludedObject.AbsoluteSize.X
+            and input.Position.Y >= excludedObject.AbsolutePosition.Y
+            and input.Position.Y <= excludedObject.AbsolutePosition.Y + excludedObject.AbsoluteSize.Y
+        local insideSecond = excludedObject2
+            and input.Position.X >= excludedObject2.AbsolutePosition.X
+            and input.Position.X <= excludedObject2.AbsolutePosition.X + excludedObject2.AbsoluteSize.X
+            and input.Position.Y >= excludedObject2.AbsolutePosition.Y
+            and input.Position.Y <= excludedObject2.AbsolutePosition.Y + excludedObject2.AbsoluteSize.Y
+        if insideFirst or insideSecond then
+            return
+        end
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPosition = object.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    object.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    S.UserInputService.InputChanged:Connect(function(input)
+        if dragging and input == dragInput then
+            local delta = input.Position - dragStart
+            object.Position = UDim2.new(
+                startPosition.X.Scale, startPosition.X.Offset + delta.X,
+                startPosition.Y.Scale, startPosition.Y.Offset + delta.Y
+            )
+        end
+    end)
+end
+
+local Ball = Instance.new("TextButton")
+Ball.Name = "FloatButton"
+Ball.Size = UDim2.fromOffset(54, 54)
+Ball.Position = UDim2.new(0.04, 0, 0.42, 0)
+Ball.BackgroundColor3 = COLORS.Background
+Ball.Text = "XY"
+Ball.TextColor3 = COLORS.Accent
+Ball.TextSize = 18
+Ball.Font = Enum.Font.GothamBold
+Ball.Parent = ScreenGui
+corner(Ball, 27)
+stroke(Ball, COLORS.Accent, 2)
+
+local Panel = Instance.new("Frame")
+Panel.Name = "MainPanel"
+local Camera = workspace.CurrentCamera
+local PanelWidth = 720
+local PanelHeight = 720
+if Camera then
+    PanelWidth = math.min(720, math.max(340, Camera.ViewportSize.X - 24))
+    PanelHeight = math.min(720, math.max(540, Camera.ViewportSize.Y - 24))
+end
+Panel.Size = UDim2.fromOffset(PanelWidth, PanelHeight)
+Panel.Position = UDim2.new(0.5, -PanelWidth / 2, 0.5, -PanelHeight / 2)
+Panel.BackgroundColor3 = COLORS.Panel
+Panel.BorderSizePixel = 0
+Panel.Visible = false
+Panel.Active = true
+Panel.Parent = ScreenGui
+corner(Panel, 14)
+stroke(Panel, COLORS.AccentDark, 1.5)
+
+local ResizeButton = Instance.new("TextButton")
+ResizeButton.Name = "ResizeButton"
+ResizeButton.Size = UDim2.fromOffset(28, 28)
+ResizeButton.AnchorPoint = Vector2.new(1, 1)
+ResizeButton.Position = UDim2.new(1, -8, 1, -8)
+ResizeButton.BackgroundColor3 = COLORS.AccentDark
+ResizeButton.Text = "↘"
+ResizeButton.TextColor3 = COLORS.Text
+ResizeButton.TextSize = 18
+ResizeButton.Font = Enum.Font.GothamBold
+ResizeButton.AutoButtonColor = true
+ResizeButton.ZIndex = 60
+ResizeButton.Parent = Panel
+corner(ResizeButton, 8)
+stroke(ResizeButton, COLORS.Accent, 1)
+
+local ResizeState = {
+    Active = false,
+    DragInput = nil,
+    StartPosition = nil,
+    StartWidth = 0,
+    StartHeight = 0,
+}
+
+ResizeButton.InputBegan:Connect(function(input)
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1
+        and input.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+    ResizeState.Active = true
+    ResizeState.StartPosition = input.Position
+    ResizeState.StartWidth = PanelWidth
+    ResizeState.StartHeight = PanelHeight
+    input.Changed:Connect(function()
+        if input.UserInputState == Enum.UserInputState.End then
+            ResizeState.Active = false
+            ResizeState.DragInput = nil
+        end
+    end)
+end)
+
+ResizeButton.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+        ResizeState.DragInput = input
+    end
+end)
+
+S.UserInputService.InputChanged:Connect(function(input)
+    if not ResizeState.Active
+        or input ~= ResizeState.DragInput
+        or not ResizeState.StartPosition then
+        return
+    end
+    local camera = workspace.CurrentCamera
+    local maxWidth = camera and math.max(340, camera.ViewportSize.X - 24) or 1400
+    local maxHeight = camera and math.max(540, camera.ViewportSize.Y - 24) or 1000
+    local delta = input.Position - ResizeState.StartPosition
+    PanelWidth = math.clamp(ResizeState.StartWidth + delta.X, 340, maxWidth)
+    PanelHeight = math.clamp(ResizeState.StartHeight + delta.Y, 540, maxHeight)
+    Panel.Size = UDim2.fromOffset(PanelWidth, PanelHeight)
+end)
+
+local Network = {
+    Nodes = {},
+    Lines = {},
+    ConnectionDistance = 125,
+    NodeCount = 24,
+    Canvas = Instance.new("Frame"),
+}
+Network.Canvas.Name = "NetworkBackground"
+Network.Canvas.Size = UDim2.fromScale(1, 1)
+Network.Canvas.BackgroundColor3 = COLORS.Background
+Network.Canvas.BackgroundTransparency = 0.08
+Network.Canvas.BorderSizePixel = 0
+Network.Canvas.ClipsDescendants = true
+Network.Canvas.ZIndex = 1
+Network.Canvas.Parent = Panel
+
+local function drawNetworkLine(lineFrame, pointA, pointB)
+    local distance = (pointB - pointA).Magnitude
+    local angle = math.atan2(pointB.Y - pointA.Y, pointB.X - pointA.X)
+    local strength = math.clamp(1 - distance / Network.ConnectionDistance, 0, 1)
+    lineFrame.Size = UDim2.fromOffset(distance, 1)
+    lineFrame.Position = UDim2.fromOffset(pointA.X, pointA.Y)
+    lineFrame.Rotation = math.deg(angle)
+    lineFrame.BackgroundTransparency = 1 - strength * 0.52
+end
+
+for index = 1, Network.NodeCount do
+    local node = {
+        x = math.random(20, math.max(20, PanelWidth - 20)),
+        y = math.random(70, math.max(70, PanelHeight - 20)),
+        vx = (math.random() - 0.5) * 0.7,
+        vy = (math.random() - 0.5) * 0.7,
+        pulse = math.random() * math.pi * 2,
+        gui = Instance.new("Frame"),
+    }
+    node.gui.Name = "NetworkNode" .. tostring(index)
+    node.gui.Size = UDim2.fromOffset(3, 3)
+    node.gui.AnchorPoint = Vector2.new(0.5, 0.5)
+    node.gui.BackgroundColor3 = COLORS.Accent
+    node.gui.BackgroundTransparency = 0.08
+    node.gui.BorderSizePixel = 0
+    node.gui.ZIndex = 1
+    node.gui.Parent = Network.Canvas
+    corner(node.gui, 3)
+    table.insert(Network.Nodes, node)
+end
+
+task.spawn(function()
+    while ScreenGui.Parent do
+        task.wait(math.random(2, 4))
+        if not ScreenGui.Parent then break end
+        local wave = Instance.new("Frame")
+        wave.Name = "NetworkWave"
+        wave.AnchorPoint = Vector2.new(0.5, 0.5)
+        wave.Position = UDim2.fromOffset(
+            math.random(40, math.max(40, PanelWidth - 40)),
+            math.random(70, math.max(70, PanelHeight - 40))
+        )
+        wave.Size = UDim2.fromOffset(0, 0)
+        wave.BackgroundTransparency = 1
+        wave.ZIndex = 1
+        wave.Parent = Network.Canvas
+        corner(wave, 100)
+        local waveStroke = stroke(wave, COLORS.Accent, 1)
+        waveStroke.Transparency = 0.35
+        local tweenInfo = TweenInfo.new(2.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local sizeTween = S.TweenService:Create(
+            wave,
+            tweenInfo,
+            { Size = UDim2.fromOffset(math.random(100, 220), math.random(100, 220)) }
+        )
+        local fadeTween = S.TweenService:Create(waveStroke, tweenInfo, { Transparency = 1 })
+        sizeTween:Play()
+        fadeTween:Play()
+        fadeTween.Completed:Connect(function()
+            if wave.Parent then wave:Destroy() end
+        end)
+    end
+end)
+
+local function updateNetworkBackground()
+    if not Panel.Visible then return end
+    local width = Network.Canvas.AbsoluteSize.X
+    local height = Network.Canvas.AbsoluteSize.Y
+    if width <= 0 or height <= 0 then return end
+
+    for _, node in ipairs(Network.Nodes) do
+        node.x += node.vx
+        node.y += node.vy
+        node.pulse += 0.055
+        if node.x <= 8 or node.x >= width - 8 then
+            node.vx = -node.vx
+            node.x = math.clamp(node.x, 8, width - 8)
+        end
+        if node.y <= 55 or node.y >= height - 8 then
+            node.vy = -node.vy
+            node.y = math.clamp(node.y, 55, height - 8)
+        end
+        node.gui.Position = UDim2.fromOffset(node.x, node.y)
+        local pulse = (math.sin(node.pulse) + 1) * 0.5
+        local nodeSize = 3 + pulse * 2
+        node.gui.Size = UDim2.fromOffset(nodeSize, nodeSize)
+        node.gui.BackgroundTransparency = 0.08 + pulse * 0.24
+    end
+
+    for _, line in ipairs(Network.Lines) do
+        line.Visible = false
+    end
+
+    local lineIndex = 0
+    for first = 1, #Network.Nodes do
+        for second = first + 1, #Network.Nodes do
+            local pointA = Vector2.new(Network.Nodes[first].x, Network.Nodes[first].y)
+            local pointB = Vector2.new(Network.Nodes[second].x, Network.Nodes[second].y)
+            if (pointB - pointA).Magnitude < Network.ConnectionDistance then
+                lineIndex += 1
+                local line = Network.Lines[lineIndex]
+                if not line then
+                    line = Instance.new("Frame")
+                    line.Name = "NetworkLine" .. tostring(lineIndex)
+                    line.AnchorPoint = Vector2.new(0, 0.5)
+                    line.BackgroundColor3 = COLORS.Accent
+                    line.BorderSizePixel = 0
+                    line.ZIndex = 1
+                    line.Parent = Network.Canvas
+                    table.insert(Network.Lines, line)
+                end
+                line.Visible = true
+                drawNetworkLine(line, pointA, pointB)
+            end
+        end
+    end
+end
+
+makeDraggable(Ball)
+
+local Header = Instance.new("Frame")
+Header.Size = UDim2.new(1, -20, 0, 48)
+Header.Position = UDim2.fromOffset(10, 8)
+Header.BackgroundTransparency = 1
+Header.Parent = Panel
+
+local CreatorCredit = Instance.new("TextLabel")
+CreatorCredit.Size = UDim2.new(1, -20, 0, 14)
+CreatorCredit.Position = UDim2.fromOffset(10, 43)
+CreatorCredit.BackgroundTransparency = 1
+CreatorCredit.Text = "✦  MADE BY WILMER  ✦"
+CreatorCredit.TextColor3 = COLORS.Accent
+CreatorCredit.TextSize = 10
+CreatorCredit.Font = Enum.Font.GothamBlack
+CreatorCredit.TextXAlignment = Enum.TextXAlignment.Center
+CreatorCredit.Parent = Panel
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -150, 0, 23)
+Title.BackgroundTransparency = 1
+Title.Text = tr("CATÁLOGO  DE  ROPA", "CLOTHING  CATALOG")
+Title.TextColor3 = COLORS.Text
+Title.TextSize = 15
+Title.Font = Enum.Font.GothamBlack
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = Header
+
+local Status = Instance.new("TextLabel")
+Status.Position = UDim2.fromOffset(0, 25)
+Status.Size = UDim2.new(1, -150, 0, 17)
+Status.BackgroundTransparency = 1
+Status.Text = tr("Listo • anti-duplicados activo", "Ready • duplicate protection active")
+Status.TextColor3 = COLORS.Success
+Status.TextSize = 10
+Status.Font = Enum.Font.Gotham
+Status.TextXAlignment = Enum.TextXAlignment.Left
+Status.Parent = Header
+
+local Minimize = Instance.new("TextButton")
+Minimize.Size = UDim2.fromOffset(34, 28)
+Minimize.Position = UDim2.new(1, -76, 0, 2)
+Minimize.BackgroundColor3 = COLORS.Card
+Minimize.Text = "—"
+Minimize.TextColor3 = COLORS.Text
+Minimize.TextSize = 16
+Minimize.Font = Enum.Font.GothamBold
+Minimize.Parent = Header
+corner(Minimize, 7)
+
+local Close = Instance.new("TextButton")
+Close.Size = UDim2.fromOffset(34, 28)
+Close.Position = UDim2.new(1, -36, 0, 2)
+Close.BackgroundColor3 = COLORS.Danger
+Close.Text = "×"
+Close.TextColor3 = COLORS.Text
+Close.TextSize = 18
+Close.Font = Enum.Font.GothamBold
+Close.Parent = Header
+corner(Close, 7)
+
+local LanguageButton = Instance.new("TextButton")
+LanguageButton.Size = UDim2.fromOffset(34, 28)
+LanguageButton.Position = UDim2.new(1, -116, 0, 2)
+LanguageButton.BackgroundColor3 = COLORS.Card
+LanguageButton.Text = "EN"
+LanguageButton.TextColor3 = COLORS.Text
+LanguageButton.TextSize = 10
+LanguageButton.Font = Enum.Font.GothamBold
+LanguageButton.Parent = Header
+corner(LanguageButton, 7)
+
+local Tabs = Instance.new("Frame")
+Tabs.Size = UDim2.new(1, -20, 0, 36)
+Tabs.Position = UDim2.fromOffset(10, 60)
+Tabs.BackgroundColor3 = COLORS.Background
+Tabs.Parent = Panel
+corner(Tabs, 9)
+
+local CatalogTab = Instance.new("TextButton")
+CatalogTab.Size = UDim2.new(1 / 4, -4, 1, -8)
+CatalogTab.Position = UDim2.fromOffset(4, 4)
+CatalogTab.BackgroundColor3 = COLORS.Accent
+CatalogTab.Text = tr("CATÁLOGO", "CATALOG")
+CatalogTab.TextColor3 = COLORS.Text
+CatalogTab.TextSize = 11
+CatalogTab.Font = Enum.Font.GothamBold
+CatalogTab.Parent = Tabs
+corner(CatalogTab, 7)
+
+local SavedTab = Instance.new("TextButton")
+SavedTab.Size = UDim2.new(1 / 4, -4, 1, -8)
+SavedTab.Position = UDim2.new(1 / 4, 2, 0, 4)
+SavedTab.BackgroundColor3 = COLORS.Card
+SavedTab.Text = tr("ACCS SAVE", "SAVED")
+SavedTab.TextColor3 = COLORS.Muted
+SavedTab.TextSize = 11
+SavedTab.Font = Enum.Font.GothamBold
+SavedTab.Parent = Tabs
+corner(SavedTab, 7)
+
+local EditorTab = Instance.new("TextButton")
+EditorTab.Size = UDim2.new(1 / 4, -4, 1, -8)
+EditorTab.Position = UDim2.new(1 / 2, 0, 0, 4)
+EditorTab.BackgroundColor3 = COLORS.Card
+EditorTab.Text = tr("EDITOR 3D", "3D EDITOR")
+EditorTab.TextColor3 = COLORS.Muted
+EditorTab.TextSize = 11
+EditorTab.Font = Enum.Font.GothamBold
+EditorTab.Parent = Tabs
+corner(EditorTab, 7)
+
+local AvatarTab = Instance.new("TextButton")
+AvatarTab.Size = UDim2.new(1 / 4, -4, 1, -8)
+AvatarTab.Position = UDim2.new(3 / 4, -2, 0, 4)
+AvatarTab.BackgroundColor3 = COLORS.Card
+AvatarTab.Text = tr("AVATAR", "AVATAR")
+AvatarTab.TextColor3 = COLORS.Muted
+AvatarTab.TextSize = 11
+AvatarTab.Font = Enum.Font.GothamBold
+AvatarTab.Parent = Tabs
+corner(AvatarTab, 7)
+
+local SearchPanel = Instance.new("Frame")
+SearchPanel.Size = UDim2.new(1, -20, 0, 84)
+SearchPanel.Position = UDim2.fromOffset(10, 104)
+SearchPanel.BackgroundTransparency = 1
+SearchPanel.Parent = Panel
+
+local SearchBox = Instance.new("TextBox")
+SearchBox.Size = UDim2.new(0.44, -38, 0, 32)
+SearchBox.Position = UDim2.fromOffset(0, 0)
+SearchBox.BackgroundColor3 = COLORS.Card
+SearchBox.PlaceholderText = tr("BUSCAR ACCESORIOS DE ROBLOX...", "SEARCH ROBLOX ACCESSORIES...")
+SearchBox.PlaceholderColor3 = COLORS.Muted
+SearchBox.Text = ""
+SearchBox.TextColor3 = COLORS.Text
+SearchBox.TextSize = 10
+SearchBox.Font = Enum.Font.Gotham
+SearchBox.ClearTextOnFocus = false
+SearchBox.TextXAlignment = Enum.TextXAlignment.Left
+SearchBox.Parent = SearchPanel
+corner(SearchBox, 8)
+stroke(SearchBox, COLORS.CardHover, 1)
+
+local CreatorBox = Instance.new("TextBox")
+CreatorBox.Size = UDim2.new(0.56, -70, 0, 32)
+CreatorBox.Position = UDim2.new(0.44, 0, 0, 0)
+CreatorBox.BackgroundColor3 = COLORS.Card
+CreatorBox.PlaceholderText = tr("CREADOR: USUARIO O GRUPO", "CREATOR: USER OR GROUP")
+CreatorBox.PlaceholderColor3 = COLORS.Muted
+CreatorBox.Text = ""
+CreatorBox.TextColor3 = COLORS.Text
+CreatorBox.TextSize = 10
+CreatorBox.Font = Enum.Font.Gotham
+CreatorBox.ClearTextOnFocus = false
+CreatorBox.TextXAlignment = Enum.TextXAlignment.Left
+CreatorBox.Parent = SearchPanel
+corner(CreatorBox, 8)
+stroke(CreatorBox, COLORS.CardHover, 1)
+
+local SearchButton = Instance.new("TextButton")
+SearchButton.Size = UDim2.fromOffset(64, 32)
+SearchButton.Position = UDim2.new(1, -64, 0, 0)
+SearchButton.BackgroundColor3 = COLORS.Accent
+SearchButton.Text = tr("BUSCAR", "SEARCH")
+SearchButton.TextColor3 = COLORS.Text
+SearchButton.TextSize = 9
+SearchButton.Font = Enum.Font.GothamBold
+SearchButton.Parent = SearchPanel
+corner(SearchButton, 8)
+
+local CategoryFrame = Instance.new("ScrollingFrame")
+CategoryFrame.Size = UDim2.new(1, 0, 0, 24)
+CategoryFrame.Position = UDim2.fromOffset(0, 38)
+CategoryFrame.BackgroundTransparency = 1
+CategoryFrame.BorderSizePixel = 0
+CategoryFrame.CanvasSize = UDim2.new()
+CategoryFrame.ScrollBarThickness = 2
+CategoryFrame.ScrollBarImageColor3 = COLORS.Accent
+CategoryFrame.Parent = SearchPanel
+
+local SearchCategory = "Head"
+local CategoryButtons = {}
+local searchCatalog
+local CategoryLabels = {
+    All = function() return tr("TODO", "ALL") end,
+    Head = function() return tr("CABEZA", "HEAD") end,
+    Face = function() return tr("CARA", "FACE") end,
+    Neck = function() return tr("CUELLO", "NECK") end,
+    Shoulder = function() return tr("HOMBRO", "SHOULDER") end,
+    Front = function() return tr("FRENTE", "FRONT") end,
+    Back = function() return tr("ESPALDA", "BACK") end,
+    Waist = function() return tr("CINTURA", "WAIST") end,
+    Hair = function() return tr("PELO", "HAIR") end,
+    Eyebrow = function() return tr("CEJAS", "EYEBROWS") end,
+    Eyelash = function() return tr("PESTAÑAS", "EYELASHES") end,
+    Bodies = function() return tr("CUERPO", "BODY") end,
+    Clothing = function() return tr("ROPA", "CLOTHING") end,
+    TShirt = function() return tr("CAMISETA", "3D T-SHIRT") end,
+    ClassicTShirt = function() return tr("T-SHIRT CLÁSICA", "CLASSIC T-SHIRT") end,
+    ClassicShirt = function() return tr("CAMISETA CLÁSICA", "CLASSIC SHIRT") end,
+    Pants = function() return tr("PANTALONES", "3D PANTS") end,
+    ClassicPants = function() return tr("PANTALONES CLÁSICOS", "CLASSIC PANTS") end,
+    Jacket = function() return tr("CHAQUETA", "JACKET") end,
+    Sweater = function() return tr("SUÉTER", "SWEATER") end,
+    Shorts = function() return tr("SHORTS", "SHORTS") end,
+    DressSkirt = function() return tr("VESTIDO / FALDA", "DRESS / SKIRT") end,
+    Shoes = function() return tr("ZAPATOS", "SHOES") end,
+}
+local CategoryOrder = {
+    "All", "Head", "Face", "Neck", "Shoulder", "Front",
+    "Back", "Waist", "Hair", "Eyebrow", "Eyelash", "Bodies", "Clothing",
+    "TShirt", "ClassicTShirt", "ClassicShirt", "Pants", "ClassicPants",
+    "Jacket", "Sweater", "Shorts", "DressSkirt", "Shoes",
+}
+
+local updateCategoryButtons
+local CategoryLayout = Instance.new("UIListLayout")
+CategoryLayout.FillDirection = Enum.FillDirection.Horizontal
+CategoryLayout.Padding = UDim.new(0, 4)
+CategoryLayout.Parent = CategoryFrame
+CategoryLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    CategoryFrame.CanvasSize = UDim2.fromOffset(CategoryLayout.AbsoluteContentSize.X + 8, 0)
+end)
+for index, category in ipairs(CategoryOrder) do
+    local categoryButton = Instance.new("TextButton")
+    local wideCategory = category == "TShirt"
+        or category == "ClassicTShirt"
+        or category == "ClassicShirt"
+        or category == "Pants"
+        or category == "ClassicPants"
+        or category == "DressSkirt"
+    categoryButton.Size = UDim2.fromOffset(wideCategory and 112 or 82, 24)
+    categoryButton.BackgroundColor3 = category == SearchCategory and COLORS.AccentDark or COLORS.Card
+    categoryButton.Text = CategoryLabels[category]()
+    categoryButton.TextColor3 = category == SearchCategory and COLORS.Text or COLORS.Muted
+    categoryButton.TextSize = 8
+    categoryButton.Font = Enum.Font.GothamBold
+    categoryButton.Parent = CategoryFrame
+    corner(categoryButton, 6)
+    CategoryButtons[category] = categoryButton
+    categoryButton.MouseButton1Click:Connect(function()
+        SearchCategory = category
+        updateCategoryButtons()
+        if searchCatalog then
+            searchCatalog(true)
+        end
+    end)
+end
+
+updateCategoryButtons = function()
+    for name, button in pairs(CategoryButtons) do
+        local selected = name == SearchCategory
+        button.BackgroundColor3 = selected and COLORS.AccentDark or COLORS.Card
+        button.TextColor3 = selected and COLORS.Text or COLORS.Muted
+        button.Text = CategoryLabels[name]()
+    end
+end
+updateCategoryButtons()
+
+local SearchStatus = Instance.new("TextLabel")
+SearchStatus.Size = UDim2.new(1, 0, 0, 17)
+SearchStatus.Position = UDim2.fromOffset(0, 64)
+SearchStatus.BackgroundTransparency = 1
+SearchStatus.Text = tr("Busca por accesorio o creador", "Search by accessory or creator")
+SearchStatus.TextColor3 = COLORS.Muted
+SearchStatus.TextSize = 9
+SearchStatus.Font = Enum.Font.Gotham
+SearchStatus.TextXAlignment = Enum.TextXAlignment.Left
+SearchStatus.Parent = SearchPanel
+
+local CatalogPage = Instance.new("ScrollingFrame")
+CatalogPage.Size = UDim2.new(1, -20, 1, -248)
+CatalogPage.Position = UDim2.fromOffset(10, 196)
+CatalogPage.BackgroundTransparency = 1
+CatalogPage.BorderSizePixel = 0
+CatalogPage.ScrollBarThickness = 3
+CatalogPage.ScrollBarImageColor3 = COLORS.Accent
+CatalogPage.CanvasSize = UDim2.new()
+CatalogPage.Parent = Panel
+
+local CatalogLayout = Instance.new("UIListLayout")
+CatalogLayout.Padding = UDim.new(0, 7)
+CatalogLayout.Parent = CatalogPage
+CatalogLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    CatalogPage.CanvasSize = UDim2.fromOffset(0, CatalogLayout.AbsoluteContentSize.Y + 12)
+end)
+
+local CatalogEmpty = Instance.new("TextLabel")
+CatalogEmpty.Size = UDim2.new(1, -8, 0, 44)
+CatalogEmpty.LayoutOrder = 0
+CatalogEmpty.BackgroundTransparency = 1
+CatalogEmpty.Text = tr("Busca algo en el catálogo para ver resultados", "Search the catalog to see results")
+CatalogEmpty.TextColor3 = COLORS.Muted
+CatalogEmpty.TextSize = 10
+CatalogEmpty.Font = Enum.Font.GothamMedium
+CatalogEmpty.TextWrapped = true
+CatalogEmpty.Parent = CatalogPage
+
+local SavedPage = Instance.new("ScrollingFrame")
+SavedPage.Size = CatalogPage.Size
+SavedPage.Position = CatalogPage.Position
+SavedPage.BackgroundTransparency = 1
+SavedPage.BorderSizePixel = 0
+SavedPage.ScrollBarThickness = 3
+SavedPage.ScrollBarImageColor3 = COLORS.Accent
+SavedPage.CanvasSize = UDim2.new()
+SavedPage.Visible = false
+SavedPage.Parent = Panel
+
+local SavedLayout = Instance.new("UIListLayout")
+SavedLayout.Padding = UDim.new(0, 7)
+SavedLayout.Parent = SavedPage
+SavedLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    SavedPage.CanvasSize = UDim2.fromOffset(0, SavedLayout.AbsoluteContentSize.Y + 12)
+end)
+
+local SavedHeader = Instance.new("TextLabel")
+SavedHeader.Size = UDim2.new(1, -4, 0, 24)
+SavedHeader.LayoutOrder = 0
+SavedHeader.BackgroundTransparency = 1
+SavedHeader.Text = tr("ACCS SAVE", "SAVED ACCESSORIES")
+SavedHeader.TextColor3 = COLORS.Accent
+SavedHeader.TextSize = 10
+SavedHeader.Font = Enum.Font.GothamBold
+SavedHeader.TextXAlignment = Enum.TextXAlignment.Left
+SavedHeader.Parent = SavedPage
+
+local SearchResultsPage = Instance.new("ScrollingFrame")
+SearchResultsPage.Size = CatalogPage.Size
+SearchResultsPage.Position = CatalogPage.Position
+SearchResultsPage.BackgroundTransparency = 1
+SearchResultsPage.BorderSizePixel = 0
+SearchResultsPage.ScrollBarThickness = 3
+SearchResultsPage.ScrollBarImageColor3 = COLORS.Accent
+SearchResultsPage.CanvasSize = UDim2.new()
+SearchResultsPage.Visible = false
+SearchResultsPage.Parent = Panel
+
+local SearchResultsLayout = Instance.new("UIGridLayout")
+SearchResultsLayout.CellSize = UDim2.new(1 / (PanelWidth >= 600 and 4 or 2), -6, 0, 184)
+SearchResultsLayout.CellPadding = UDim2.fromOffset(7, 7)
+SearchResultsLayout.FillDirection = Enum.FillDirection.Horizontal
+SearchResultsLayout.FillDirectionMaxCells = PanelWidth >= 600 and 4 or 2
+SearchResultsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+SearchResultsLayout.Parent = SearchResultsPage
+SearchResultsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    SearchResultsPage.CanvasSize = UDim2.fromOffset(0, SearchResultsLayout.AbsoluteContentSize.Y + 12)
+end)
+
+local SearchNavigation = Instance.new("Frame")
+SearchNavigation.Size = UDim2.new(1, -20, 0, 32)
+SearchNavigation.Position = UDim2.new(0, 10, 1, -40)
+SearchNavigation.BackgroundTransparency = 1
+SearchNavigation.Visible = false
+SearchNavigation.Parent = Panel
+
+local SearchPageInfo = Instance.new("TextLabel")
+SearchPageInfo.Size = UDim2.new(1, -180, 1, 0)
+SearchPageInfo.BackgroundTransparency = 1
+SearchPageInfo.Text = ""
+SearchPageInfo.TextColor3 = COLORS.Muted
+SearchPageInfo.TextSize = 9
+SearchPageInfo.Font = Enum.Font.Gotham
+SearchPageInfo.TextXAlignment = Enum.TextXAlignment.Left
+SearchPageInfo.Parent = SearchNavigation
+
+local SearchBackButton = Instance.new("TextButton")
+SearchBackButton.Size = UDim2.fromOffset(86, 28)
+SearchBackButton.Position = UDim2.new(1, -180, 0, 2)
+SearchBackButton.BackgroundColor3 = COLORS.Card
+SearchBackButton.Text = tr("ATRÁS", "BACK")
+SearchBackButton.TextColor3 = COLORS.Muted
+SearchBackButton.TextSize = 9
+SearchBackButton.Font = Enum.Font.GothamBold
+SearchBackButton.Parent = SearchNavigation
+corner(SearchBackButton, 7)
+
+local SearchNextButton = Instance.new("TextButton")
+SearchNextButton.Size = UDim2.fromOffset(86, 28)
+SearchNextButton.Position = UDim2.new(1, -86, 0, 2)
+SearchNextButton.BackgroundColor3 = COLORS.Card
+SearchNextButton.Text = tr("SIGUIENTE", "NEXT")
+SearchNextButton.TextColor3 = COLORS.Text
+SearchNextButton.TextSize = 9
+SearchNextButton.Font = Enum.Font.GothamBold
+SearchNextButton.Parent = SearchNavigation
+corner(SearchNextButton, 7)
+
+local BundleModal = Instance.new("Frame")
+BundleModal.Size = UDim2.new(1, -40, 1, -160)
+BundleModal.Position = UDim2.fromOffset(20, 80)
+BundleModal.BackgroundColor3 = COLORS.Panel
+BundleModal.BorderSizePixel = 0
+BundleModal.Visible = false
+BundleModal.ZIndex = 50
+BundleModal.Parent = Panel
+corner(BundleModal, 12)
+stroke(BundleModal, COLORS.Accent, 1.5)
+
+local BundleHeader = Instance.new("Frame")
+BundleHeader.Size = UDim2.new(1, -20, 0, 42)
+BundleHeader.Position = UDim2.fromOffset(10, 8)
+BundleHeader.BackgroundTransparency = 1
+BundleHeader.ZIndex = 51
+BundleHeader.Parent = BundleModal
+
+local BundleTitle = Instance.new("TextLabel")
+BundleTitle.Size = UDim2.new(1, -42, 1, 0)
+BundleTitle.BackgroundTransparency = 1
+BundleTitle.Text = tr("ITEMS DEL BUNDLE", "BUNDLE ITEMS")
+BundleTitle.TextColor3 = COLORS.Text
+BundleTitle.TextSize = 12
+BundleTitle.Font = Enum.Font.GothamBold
+BundleTitle.TextXAlignment = Enum.TextXAlignment.Left
+BundleTitle.ZIndex = 51
+BundleTitle.Parent = BundleHeader
+
+local BundleClose = Instance.new("TextButton")
+BundleClose.Size = UDim2.fromOffset(30, 28)
+BundleClose.Position = UDim2.new(1, -30, 0, 2)
+BundleClose.BackgroundColor3 = COLORS.Danger
+BundleClose.Text = "×"
+BundleClose.TextColor3 = COLORS.Text
+BundleClose.TextSize = 17
+BundleClose.Font = Enum.Font.GothamBold
+BundleClose.ZIndex = 52
+BundleClose.Parent = BundleHeader
+corner(BundleClose, 7)
+
+local BundleItemsPage = Instance.new("ScrollingFrame")
+BundleItemsPage.Size = UDim2.new(1, -20, 1, -62)
+BundleItemsPage.Position = UDim2.fromOffset(10, 54)
+BundleItemsPage.BackgroundTransparency = 1
+BundleItemsPage.BorderSizePixel = 0
+BundleItemsPage.ScrollBarThickness = 3
+BundleItemsPage.ScrollBarImageColor3 = COLORS.Accent
+BundleItemsPage.CanvasSize = UDim2.new()
+BundleItemsPage.ZIndex = 51
+BundleItemsPage.Parent = BundleModal
+
+local BundleItemsLayout = Instance.new("UIListLayout")
+BundleItemsLayout.Padding = UDim.new(0, 7)
+BundleItemsLayout.Parent = BundleItemsPage
+BundleItemsLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    BundleItemsPage.CanvasSize = UDim2.fromOffset(0, BundleItemsLayout.AbsoluteContentSize.Y + 12)
+end)
+
+BundleClose.MouseButton1Click:Connect(function()
+    BundleModal.Visible = false
+end)
+
+local EditorPage = Instance.new("ScrollingFrame")
+EditorPage.Size = UDim2.new(1, -20, 1, -110)
+EditorPage.Position = UDim2.fromOffset(10, 104)
+EditorPage.BackgroundTransparency = 1
+EditorPage.BorderSizePixel = 0
+EditorPage.ScrollBarThickness = 3
+EditorPage.ScrollBarImageColor3 = COLORS.Accent
+EditorPage.CanvasSize = UDim2.new()
+EditorPage.Visible = false
+EditorPage.Parent = Panel
+
+local EditorLayout = Instance.new("UIListLayout")
+EditorLayout.Padding = UDim.new(0, 7)
+EditorLayout.Parent = EditorPage
+EditorLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    EditorPage.CanvasSize = UDim2.fromOffset(0, EditorLayout.AbsoluteContentSize.Y + 12)
+end)
+
+local AvatarPage
+
+local function setTab(tab)
+    CurrentTab = tab
+    local catalog = tab == "Catalog"
+    local saved = tab == "Saved"
+    CatalogPage.Visible = catalog and not ShowingSearchResults
+    SearchResultsPage.Visible = catalog and ShowingSearchResults
+    SavedPage.Visible = saved
+    SearchPanel.Visible = catalog
+    SearchNavigation.Visible = catalog and ShowingSearchResults
+    EditorPage.Visible = tab == "Editor"
+    AvatarPage.Visible = tab == "Avatar"
+    if not catalog then BundleModal.Visible = false end
+    CatalogTab.BackgroundColor3 = catalog and COLORS.Accent or COLORS.Card
+    CatalogTab.TextColor3 = catalog and COLORS.Text or COLORS.Muted
+    SavedTab.BackgroundColor3 = saved and COLORS.Accent or COLORS.Card
+    SavedTab.TextColor3 = saved and COLORS.Text or COLORS.Muted
+    EditorTab.BackgroundColor3 = tab == "Editor" and COLORS.Accent or COLORS.Card
+    EditorTab.TextColor3 = tab == "Editor" and COLORS.Text or COLORS.Muted
+    AvatarTab.BackgroundColor3 = tab == "Avatar" and COLORS.Accent or COLORS.Card
+    AvatarTab.TextColor3 = tab == "Avatar" and COLORS.Text or COLORS.Muted
+end
+CatalogTab.MouseButton1Click:Connect(function() setTab("Catalog") end)
+SavedTab.MouseButton1Click:Connect(function() setTab("Saved") end)
+EditorTab.MouseButton1Click:Connect(function() setTab("Editor") end)
+AvatarTab.MouseButton1Click:Connect(function() setTab("Avatar") end)
+Ball.MouseButton1Click:Connect(function() Panel.Visible = not Panel.Visible end)
+Minimize.MouseButton1Click:Connect(function() Panel.Visible = false end)
+Close.MouseButton1Click:Connect(function() ScreenGui:Destroy() end)
+
+local toggleButtons = {}
+local createSelectorOption
+local function refreshToggle(itemName)
+    local button = toggleButtons[itemName]
+    if not button then return end
+    local on = Enabled[itemName]
+    button.BackgroundColor3 = on and COLORS.AccentDark or COLORS.Card
+    button.TextColor3 = on and COLORS.Text or COLORS.Muted
+    button.Text = (on and "●  " or "○  ") .. ITEM_BY_NAME[itemName].label
+end
+
+local function createCatalogButton(item, order)
+    if toggleButtons[item.name] then return toggleButtons[item.name] end
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(1, -4, 0, 38)
+    button.LayoutOrder = order or (#ITEMS + 1)
+    button.BackgroundColor3 = COLORS.Card
+    button.TextColor3 = COLORS.Muted
+    button.Text = "○  " .. item.label
+    button.TextSize = 11
+    button.Font = Enum.Font.GothamBold
+    button.TextXAlignment = Enum.TextXAlignment.Left
+    button.Parent = SavedPage
+    corner(button, 8)
+    stroke(button, COLORS.CardHover, 1)
+    toggleButtons[item.name] = button
+    button.MouseButton1Click:Connect(function()
+        toggleItem(item.name, not Enabled[item.name])
+        refreshToggle(item.name)
+        Status.Text = Enabled[item.name]
+            and (item.label .. " " .. tr("cargado", "loaded"))
+            or (item.label .. " " .. tr("retirado", "removed"))
+        Status.TextColor3 = Enabled[item.name] and COLORS.Success or COLORS.Muted
+    end)
+    return button
+end
+
+for index, item in ipairs(ITEMS) do
+    createCatalogButton(item, index)
+end
+
+AvatarPage = Instance.new("ScrollingFrame")
+AvatarPage.Size = UDim2.new(1, -20, 1, -110)
+AvatarPage.Position = UDim2.fromOffset(10, 104)
+AvatarPage.BackgroundTransparency = 1
+AvatarPage.BorderSizePixel = 0
+AvatarPage.ScrollBarThickness = 3
+AvatarPage.ScrollBarImageColor3 = COLORS.Accent
+AvatarPage.CanvasSize = UDim2.new()
+AvatarPage.Visible = false
+AvatarPage.ZIndex = 5
+AvatarPage.Parent = Panel
+
+local AvatarLayout = Instance.new("UIListLayout")
+AvatarLayout.Padding = UDim.new(0, 7)
+AvatarLayout.Parent = AvatarPage
+AvatarLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    AvatarPage.CanvasSize = UDim2.fromOffset(0, AvatarLayout.AbsoluteContentSize.Y + 12)
+end)
+
+local AvatarTitle = Instance.new("TextLabel")
+AvatarTitle.Size = UDim2.new(1, -4, 0, 28)
+AvatarTitle.LayoutOrder = 1
+AvatarTitle.BackgroundTransparency = 1
+AvatarTitle.Text = tr("MI AVATAR", "MY AVATAR")
+AvatarTitle.TextColor3 = COLORS.Accent
+AvatarTitle.TextSize = 13
+AvatarTitle.Font = Enum.Font.GothamBlack
+AvatarTitle.TextXAlignment = Enum.TextXAlignment.Left
+AvatarTitle.Parent = AvatarPage
+
+local AvatarDescription = Instance.new("TextLabel")
+AvatarDescription.Size = UDim2.new(1, -4, 0, 34)
+AvatarDescription.LayoutOrder = 2
+AvatarDescription.BackgroundTransparency = 1
+AvatarDescription.Text = tr(
+    "Quita el avatar actual o guarda tus combinaciones para volver a equiparlas.",
+    "Unequip the current avatar or save your outfits to equip them again."
+)
+AvatarDescription.TextColor3 = COLORS.Muted
+AvatarDescription.TextSize = 10
+AvatarDescription.Font = Enum.Font.Gotham
+AvatarDescription.TextWrapped = true
+AvatarDescription.TextXAlignment = Enum.TextXAlignment.Left
+AvatarDescription.Parent = AvatarPage
+
+local AvatarActions = Instance.new("Frame")
+AvatarActions.Size = UDim2.new(1, -4, 0, 42)
+AvatarActions.LayoutOrder = 3
+AvatarActions.BackgroundTransparency = 1
+AvatarActions.Parent = AvatarPage
+
+local UnequipAllButton = Instance.new("TextButton")
+UnequipAllButton.Size = UDim2.new(0.5, -4, 1, 0)
+UnequipAllButton.BackgroundColor3 = COLORS.Danger
+UnequipAllButton.Text = tr("DESEQUIPAR TODO", "UNEQUIP ALL")
+UnequipAllButton.TextColor3 = COLORS.Text
+UnequipAllButton.TextSize = 10
+UnequipAllButton.Font = Enum.Font.GothamBold
+UnequipAllButton.Parent = AvatarActions
+corner(UnequipAllButton, 8)
+
+local SaveFitButton = Instance.new("TextButton")
+SaveFitButton.Size = UDim2.new(0.5, -4, 1, 0)
+SaveFitButton.Position = UDim2.new(0.5, 4, 0, 0)
+SaveFitButton.BackgroundColor3 = COLORS.Accent
+SaveFitButton.Text = "SAVE FIT"
+SaveFitButton.TextColor3 = COLORS.Text
+SaveFitButton.TextSize = 10
+SaveFitButton.Font = Enum.Font.GothamBlack
+SaveFitButton.Parent = AvatarActions
+corner(SaveFitButton, 8)
+
+local AvatarStatus = Instance.new("TextLabel")
+AvatarStatus.Size = UDim2.new(1, -4, 0, 22)
+AvatarStatus.LayoutOrder = 4
+AvatarStatus.BackgroundTransparency = 1
+AvatarStatus.Text = tr("Tus avatares guardados aparecerán aquí.", "Your saved avatars will appear here.")
+AvatarStatus.TextColor3 = COLORS.Muted
+AvatarStatus.TextSize = 9
+AvatarStatus.Font = Enum.Font.Gotham
+AvatarStatus.TextXAlignment = Enum.TextXAlignment.Left
+AvatarStatus.Parent = AvatarPage
+
+local PreviewControls = {
+    Yaw = 0,
+    Pitch = 0.08,
+    Zoom = 1,
+    PanX = 0,
+    PanY = 0,
+    DragMode = nil,
+    DragInput = nil,
+    LastPosition = nil,
+    BoundsSize = Vector3.new(4, 6, 4),
+}
+local PreviewDirty = true
+
+PreviewControls.SkinPanel = Instance.new("Frame")
+PreviewControls.SkinPanel.Size = UDim2.new(1, -4, 0, 58)
+PreviewControls.SkinPanel.LayoutOrder = 5
+PreviewControls.SkinPanel.BackgroundColor3 = COLORS.Card
+PreviewControls.SkinPanel.Parent = AvatarPage
+corner(PreviewControls.SkinPanel, 8)
+
+PreviewControls.SkinTitle = Instance.new("TextLabel")
+PreviewControls.SkinTitle.Size = UDim2.new(1, -12, 0, 18)
+PreviewControls.SkinTitle.Position = UDim2.fromOffset(6, 3)
+PreviewControls.SkinTitle.BackgroundTransparency = 1
+PreviewControls.SkinTitle.Text = tr("TONO DE PIEL", "SKIN TONE")
+PreviewControls.SkinTitle.TextColor3 = COLORS.Text
+PreviewControls.SkinTitle.TextSize = 9
+PreviewControls.SkinTitle.Font = Enum.Font.GothamBold
+PreviewControls.SkinTitle.TextXAlignment = Enum.TextXAlignment.Left
+PreviewControls.SkinTitle.Parent = PreviewControls.SkinPanel
+
+for index, color in ipairs({
+    Color3.fromRGB(255, 224, 189),
+    Color3.fromRGB(255, 205, 148),
+    Color3.fromRGB(239, 194, 143),
+    Color3.fromRGB(224, 172, 118),
+    Color3.fromRGB(198, 134, 88),
+    Color3.fromRGB(166, 101, 62),
+    Color3.fromRGB(128, 75, 45),
+    Color3.fromRGB(92, 52, 32),
+    Color3.fromRGB(64, 38, 25),
+}) do
+    local swatch = Instance.new("TextButton")
+    swatch.Size = UDim2.fromOffset(24, 24)
+    swatch.Position = UDim2.fromOffset(7 + (index - 1) * 29, 27)
+    swatch.BackgroundColor3 = color
+    swatch.Text = ""
+    swatch.AutoButtonColor = true
+    swatch.Parent = PreviewControls.SkinPanel
+    corner(swatch, 12)
+    stroke(swatch, COLORS.CardHover, 1)
+    swatch.MouseButton1Click:Connect(function()
+        local character = getCharacter()
+        local bodyColors = character and character:FindFirstChildOfClass("BodyColors")
+        if bodyColors then
+            bodyColors.HeadColor3 = color
+            bodyColors.LeftArmColor3 = color
+            bodyColors.RightArmColor3 = color
+            bodyColors.LeftLegColor3 = color
+            bodyColors.RightLegColor3 = color
+            bodyColors.TorsoColor3 = color
+        end
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            pcall(function()
+                local description = humanoid:GetAppliedDescription()
+                local brickColor = BrickColor.new(color)
+                description.HeadColor = brickColor
+                description.LeftArmColor = brickColor
+                description.RightArmColor = brickColor
+                description.LeftLegColor = brickColor
+                description.RightLegColor = brickColor
+                description.TorsoColor = brickColor
+                humanoid:ApplyDescription(description)
+            end)
+        end
+        PreviewDirty = true
+    end)
+end
+
+local AvatarWorkspace = Instance.new("Frame")
+AvatarWorkspace.Size = UDim2.new(1, -4, 0, 280)
+AvatarWorkspace.LayoutOrder = 6
+AvatarWorkspace.BackgroundTransparency = 1
+AvatarWorkspace.Parent = AvatarPage
+
+local PreviewViewport = Instance.new("ViewportFrame")
+PreviewViewport.Size = UDim2.new(0.41, -4, 0, 280)
+PreviewViewport.Position = UDim2.fromOffset(0, 0)
+PreviewViewport.BackgroundColor3 = COLORS.Background
+PreviewViewport.BorderSizePixel = 0
+PreviewViewport.Ambient = Color3.fromRGB(190, 190, 210)
+PreviewViewport.LightColor = Color3.fromRGB(255, 255, 255)
+PreviewViewport.LightDirection = Vector3.new(-1, -1, -1)
+PreviewViewport.Parent = AvatarWorkspace
+corner(PreviewViewport, 10)
+stroke(PreviewViewport, COLORS.AccentDark, 1)
+
+local PreviewLabel = Instance.new("TextLabel")
+PreviewLabel.Size = UDim2.new(1, -12, 0, 22)
+PreviewLabel.Position = UDim2.fromOffset(6, 6)
+PreviewLabel.BackgroundTransparency = 1
+PreviewLabel.Text = tr("TU PERSONAJE", "YOUR CHARACTER")
+PreviewLabel.TextColor3 = COLORS.Text
+PreviewLabel.TextSize = 9
+PreviewLabel.Font = Enum.Font.GothamBold
+PreviewLabel.TextXAlignment = Enum.TextXAlignment.Left
+PreviewLabel.ZIndex = 2
+PreviewLabel.Parent = PreviewViewport
+
+local CurrentFitTitle = Instance.new("TextLabel")
+CurrentFitTitle.Size = UDim2.new(0.59, -4, 0, 24)
+CurrentFitTitle.Position = UDim2.new(0.41, 4, 0, 0)
+CurrentFitTitle.LayoutOrder = 1
+CurrentFitTitle.BackgroundTransparency = 1
+CurrentFitTitle.Text = tr("TU FIT ACTUAL", "CURRENT FIT")
+CurrentFitTitle.TextColor3 = COLORS.Accent
+CurrentFitTitle.TextSize = 10
+CurrentFitTitle.Font = Enum.Font.GothamBold
+CurrentFitTitle.TextXAlignment = Enum.TextXAlignment.Left
+CurrentFitTitle.Parent = AvatarWorkspace
+
+local CurrentFitList = Instance.new("Frame")
+CurrentFitList.Size = UDim2.new(0.59, -4, 0, 44)
+CurrentFitList.Position = UDim2.new(0.41, 4, 0, 28)
+CurrentFitList.LayoutOrder = 2
+CurrentFitList.BackgroundTransparency = 1
+CurrentFitList.Parent = AvatarPage
+
+local CurrentFitLayout = Instance.new("UIListLayout")
+CurrentFitLayout.Padding = UDim.new(0, 7)
+CurrentFitLayout.Parent = CurrentFitList
+CurrentFitLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    local listHeight = math.max(44, CurrentFitLayout.AbsoluteContentSize.Y)
+    CurrentFitList.Size = UDim2.new(0.59, -4, 0, listHeight)
+    AvatarWorkspace.Size = UDim2.new(1, -4, 0, math.max(280, listHeight + 34))
+end)
+
+local FitsTitle = Instance.new("TextLabel")
+FitsTitle.Size = UDim2.new(1, -4, 0, 24)
+FitsTitle.LayoutOrder = 7
+FitsTitle.BackgroundTransparency = 1
+FitsTitle.Text = tr("AVATARES GUARDADOS", "SAVED AVATARS")
+FitsTitle.TextColor3 = COLORS.Accent
+FitsTitle.TextSize = 10
+FitsTitle.Font = Enum.Font.GothamBold
+FitsTitle.TextXAlignment = Enum.TextXAlignment.Left
+FitsTitle.Parent = AvatarPage
+
+local FitList = Instance.new("Frame")
+FitList.Size = UDim2.new(1, -4, 0, 44)
+FitList.LayoutOrder = 8
+FitList.BackgroundTransparency = 1
+FitList.Parent = AvatarPage
+
+local FitListLayout = Instance.new("UIListLayout")
+FitListLayout.Padding = UDim.new(0, 7)
+FitListLayout.Parent = FitList
+FitListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    FitList.Size = UDim2.new(1, -4, 0, math.max(44, FitListLayout.AbsoluteContentSize.Y))
+end)
+
+local function copyTransform(transform)
+    return {
+        Scale = transform.Scale,
+        PosX = transform.PosX,
+        PosY = transform.PosY,
+        PosZ = transform.PosZ,
+        RotX = transform.RotX,
+        RotY = transform.RotY,
+        RotZ = transform.RotZ,
+    }
+end
+
+local function captureFit()
+    local fit = {
+        items = {},
+    }
+    for _, item in ipairs(ITEMS) do
+        if Enabled[item.name] then
+            fit.items[item.name] = {
+                transform = copyTransform(Transforms[item.name]),
+            }
+        end
+    end
+    return fit
+end
+
+local function refreshAllToggles()
+    for itemName in pairs(toggleButtons) do
+        refreshToggle(itemName)
+    end
+end
+
+local function clearAvatar()
+    local cleared = {}
+    for _, entry in ipairs(CurrentFitItems) do
+        local item = ITEM_BY_NAME[entry.itemName]
+        if item then
+            toggleItem(item.name, false)
+            cleared[item.name] = true
+        end
+    end
+    for _, item in ipairs(ITEMS) do
+        if Enabled[item.name] and not cleared[item.name] then
+            toggleItem(item.name, false)
+        end
+    end
+
+    refreshAllToggles()
+    PreviewDirty = true
+end
+
+local FitRows = {}
+local CurrentFitItems = {}
+local CurrentFitKeys = {}
+local PreviewWorld = Instance.new("WorldModel")
+PreviewWorld.Parent = PreviewViewport
+local PreviewCamera = Instance.new("Camera")
+PreviewCamera.FieldOfView = 35
+PreviewCamera.Parent = PreviewViewport
+PreviewViewport.CurrentCamera = PreviewCamera
+local PreviewCharacter
+local PreviewConnections = {}
+
+PreviewViewport.Active = true
+PreviewControls.UpdateCamera = function()
+    if not PreviewCharacter then return end
+    local size = PreviewControls.BoundsSize
+    local focus = Vector3.new(
+        PreviewControls.PanX,
+        math.max(2, size.Y * 0.48) + PreviewControls.PanY,
+        0
+    )
+    local distance = math.max(5, math.max(size.X, size.Y, size.Z) * 2.2) * PreviewControls.Zoom
+    local rotation = CFrame.Angles(PreviewControls.Pitch, PreviewControls.Yaw, 0)
+    local offset = rotation:VectorToWorldSpace(Vector3.new(0, 0, distance))
+    PreviewCamera.CFrame = CFrame.lookAt(focus + offset, focus)
+end
+
+PreviewViewport.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        PreviewControls.DragMode = "rotate"
+        PreviewControls.DragInput = input
+        PreviewControls.LastPosition = input.Position
+    elseif input.UserInputType == Enum.UserInputType.MouseButton2
+        or input.UserInputType == Enum.UserInputType.MouseButton3 then
+        PreviewControls.DragMode = "pan"
+        PreviewControls.DragInput = input
+        PreviewControls.LastPosition = input.Position
+    elseif input.UserInputType == Enum.UserInputType.Touch then
+        PreviewControls.DragMode = "rotate"
+        PreviewControls.DragInput = input
+        PreviewControls.LastPosition = input.Position
+    end
+end)
+
+PreviewViewport.InputEnded:Connect(function(input)
+    if input == PreviewControls.DragInput
+        or input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.MouseButton2
+        or input.UserInputType == Enum.UserInputType.MouseButton3
+        or input.UserInputType == Enum.UserInputType.Touch then
+        PreviewControls.DragMode = nil
+        PreviewControls.DragInput = nil
+        PreviewControls.LastPosition = nil
+    end
+end)
+
+PreviewViewport.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+        PreviewControls.DragInput = input
+    end
+end)
+
+S.UserInputService.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseWheel then
+        PreviewControls.Zoom = math.clamp(
+            PreviewControls.Zoom - input.Position.Z * 0.08,
+            0.55,
+            1.8
+        )
+        PreviewControls.UpdateCamera()
+        return
+    end
+    if not PreviewControls.DragMode
+        or input ~= PreviewControls.DragInput
+        or not PreviewControls.LastPosition then
+        return
+    end
+    local delta = input.Position - PreviewControls.LastPosition
+    PreviewControls.LastPosition = input.Position
+    if PreviewControls.DragMode == "rotate" then
+        PreviewControls.Yaw -= delta.X * 0.01
+        PreviewControls.Pitch = math.clamp(PreviewControls.Pitch - delta.Y * 0.01, -0.8, 0.8)
+    else
+        PreviewControls.PanX = math.clamp(PreviewControls.PanX + delta.X * 0.01, -4, 4)
+        PreviewControls.PanY = math.clamp(PreviewControls.PanY - delta.Y * 0.01, -4, 4)
+    end
+    PreviewControls.UpdateCamera()
+end)
+
+makeDraggable(Panel, PreviewViewport, ResizeButton)
+
+local function disconnectPreviewConnections()
+    for _, connection in ipairs(PreviewConnections) do
+        connection:Disconnect()
+    end
+    table.clear(PreviewConnections)
+end
+
+local function connectPreviewCharacter(character)
+    disconnectPreviewConnections()
+    if not character then return end
+    table.insert(PreviewConnections, character.DescendantAdded:Connect(function()
+        PreviewDirty = true
+    end))
+    table.insert(PreviewConnections, character.DescendantRemoving:Connect(function()
+        PreviewDirty = true
+    end))
+    PreviewDirty = true
+end
+
+local function updateAvatarPreview()
+    if not PreviewDirty or CurrentTab ~= "Avatar" then return end
+    PreviewDirty = false
+    PreviewCharacter = nil
+    for _, child in ipairs(PreviewWorld:GetChildren()) do
+        child:Destroy()
+    end
+
+    local character = getCharacter()
+    if not character then return end
+    local oldArchivable = character.Archivable
+    character.Archivable = true
+    local ok, clone = pcall(function()
+        return character:Clone()
+    end)
+    character.Archivable = oldArchivable
+    if not ok or not clone then return end
+
+    clone.Name = "AvatarPreviewCharacter"
+    clone.Parent = PreviewWorld
+    PreviewCharacter = clone
+    for _, descendant in ipairs(clone:GetDescendants()) do
+        if descendant:IsA("BasePart") then
+            descendant.Anchored = true
+            descendant.CanCollide = false
+        elseif descendant:IsA("Script") or descendant:IsA("LocalScript") then
+            descendant:Destroy()
+        end
+    end
+
+    pcall(function()
+        clone:PivotTo(CFrame.new())
+    end)
+    local _, boundsSize = clone:GetBoundingBox()
+    PreviewControls.BoundsSize = boundsSize
+    PreviewControls.UpdateCamera()
+end
+
+local CurrentFitDefinitions = {
+    { property = "GraphicTShirt", assetTypeName = "TShirt", kind = "catalog", label = "CAMISETA" },
+    { property = "Shirt", assetTypeName = "Shirt", kind = "catalog", label = "CAMISETA CLÁSICA" },
+    { property = "Pants", assetTypeName = "Pants", kind = "catalog", label = "PANTALONES CLÁSICOS" },
+    { property = "TShirtAccessory", assetTypeName = "TShirtAccessory", kind = "catalog", label = "CAMISETA 3D" },
+    { property = "ShirtAccessory", assetTypeName = "ShirtAccessory", kind = "catalog", label = "CAMISETA 3D" },
+    { property = "PantsAccessory", assetTypeName = "PantsAccessory", kind = "catalog", label = "PANTALONES 3D" },
+    { property = "JacketAccessory", assetTypeName = "JacketAccessory", kind = "catalog", label = "CHAQUETA" },
+    { property = "SweaterAccessory", assetTypeName = "SweaterAccessory", kind = "catalog", label = "SUÉTER" },
+    { property = "ShortsAccessory", assetTypeName = "ShortsAccessory", kind = "catalog", label = "SHORTS" },
+    { property = "DressSkirtAccessory", assetTypeName = "DressSkirtAccessory", kind = "catalog", label = "VESTIDO / FALDA" },
+    { property = "LeftShoeAccessory", assetTypeName = "LeftShoeAccessory", kind = "catalog", label = "ZAPATO IZQUIERDO" },
+    { property = "RightShoeAccessory", assetTypeName = "RightShoeAccessory", kind = "catalog", label = "ZAPATO DERECHO" },
+    { property = "HatAccessory", assetTypeName = "Hat", accessoryTypeName = "Hat", label = "SOMBRERO" },
+    { property = "HairAccessory", assetTypeName = "HairAccessory", accessoryTypeName = "Hair", label = "PELO" },
+    { property = "FaceAccessory", assetTypeName = "FaceAccessory", accessoryTypeName = "Face", label = "CARA" },
+    { property = "NeckAccessory", assetTypeName = "NeckAccessory", accessoryTypeName = "Neck", label = "CUELLO" },
+    { property = "ShoulderAccessory", assetTypeName = "ShoulderAccessory", accessoryTypeName = "Shoulder", label = "HOMBRO" },
+    { property = "FrontAccessory", assetTypeName = "FrontAccessory", accessoryTypeName = "Front", label = "FRENTE" },
+    { property = "BackAccessory", assetTypeName = "BackAccessory", accessoryTypeName = "Back", label = "ESPALDA" },
+    { property = "WaistAccessory", assetTypeName = "WaistAccessory", accessoryTypeName = "Waist", label = "CINTURA" },
+    { property = "EyebrowAccessory", assetTypeName = "EyebrowAccessory", accessoryTypeName = "Eyebrow", label = "CEJAS" },
+    { property = "EyelashAccessory", assetTypeName = "EyelashAccessory", accessoryTypeName = "Eyelash", label = "PESTAÑAS" },
+    { property = "Head", assetTypeName = "Head", kind = "catalog", label = "CABEZA" },
+    { property = "Torso", assetTypeName = "Torso", kind = "catalog", label = "TORSO" },
+    { property = "LeftArm", assetTypeName = "LeftArm", kind = "catalog", label = "BRAZO IZQUIERDO" },
+    { property = "RightArm", assetTypeName = "RightArm", kind = "catalog", label = "BRAZO DERECHO" },
+    { property = "LeftLeg", assetTypeName = "LeftLeg", kind = "catalog", label = "PIERNA IZQUIERDA" },
+    { property = "RightLeg", assetTypeName = "RightLeg", kind = "catalog", label = "PIERNA DERECHA" },
+}
+
+local function getDescriptionAssetIds(value)
+    local ids = {}
+    if type(value) == "number" then
+        if value > 0 then table.insert(ids, value) end
+        return ids
+    end
+    if type(value) ~= "string" then return ids end
+    for id in string.gmatch(value, "%d+") do
+        local numericId = tonumber(id)
+        if numericId and numericId > 0 then
+            table.insert(ids, numericId)
+        end
+    end
+    return ids
+end
+
+local function getAvatarAssetType(name)
+    local ok, value = pcall(function()
+        return Enum.AvatarAssetType[name]
+    end)
+    return ok and value or name
+end
+
+local function getAvatarAccessoryType(name)
+    local ok, value = pcall(function()
+        return Enum.AccessoryType[name]
+    end)
+    return ok and value or Enum.AccessoryType.Hat
+end
+
+local function registerCurrentFitItem(assetId, definition)
+    local key = definition.property .. ":" .. tostring(assetId)
+    if CurrentFitKeys[key] then return end
+    CurrentFitKeys[key] = true
+
+    local item = ITEM_BY_ID[assetId]
+    if not item then
+        item = registerItem({
+            name = "AvatarFit_" .. definition.property .. "_" .. tostring(assetId),
+            label = definition.label,
+            id = assetId,
+            assetType = getAvatarAssetType(definition.assetTypeName),
+            accessoryType = definition.accessoryTypeName and getAvatarAccessoryType(definition.accessoryTypeName) or nil,
+            kind = definition.kind,
+            property = definition.property,
+            searchCategory = "All",
+        })
+    end
+
+    item.kind = definition.kind or (definition.accessoryTypeName and nil or "catalog")
+    item.property = definition.property
+    if PendingAccessories._Disabled[item.name] then return end
+    Enabled[item.name] = true
+    if createCatalogButton then
+        createCatalogButton(item, #ITEMS)
+    end
+    refreshToggle(item.name)
+    if createSelectorOption then
+        createSelectorOption(item, #ITEMS)
+    end
+    table.insert(CurrentFitItems, {
+        itemName = item.name,
+        assetId = assetId,
+        label = item.label,
+        property = definition.property,
+        assetTypeName = definition.assetTypeName,
+    })
+end
+
+local function renderCurrentFit()
+    for _, child in ipairs(CurrentFitList:GetChildren()) do
+        if child ~= CurrentFitLayout then
+            child:Destroy()
+        end
+    end
+
+    if #CurrentFitItems == 0 then
+        local empty = Instance.new("TextLabel")
+        empty.Size = UDim2.new(1, -4, 0, 40)
+        empty.BackgroundTransparency = 1
+        empty.Text = tr(
+            "No se pudieron leer los artículos del fit actual.",
+            "The current fit items could not be read."
+        )
+        empty.TextColor3 = COLORS.Muted
+        empty.TextSize = 9
+        empty.Font = Enum.Font.Gotham
+        empty.TextWrapped = true
+        empty.Parent = CurrentFitList
+        return
+    end
+
+    for index, entry in ipairs(CurrentFitItems) do
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, 0, 0, 42)
+        row.LayoutOrder = index
+        row.BackgroundColor3 = COLORS.Card
+        row.Parent = CurrentFitList
+        corner(row, 8)
+        stroke(row, COLORS.CardHover, 1)
+
+        local thumbnail = Instance.new("ImageLabel")
+        thumbnail.Size = UDim2.fromOffset(34, 34)
+        thumbnail.Position = UDim2.fromOffset(5, 4)
+        thumbnail.BackgroundColor3 = COLORS.CardHover
+        thumbnail.BackgroundTransparency = 0.15
+        thumbnail.Image = "rbxthumb://type=Asset&id=" .. tostring(entry.assetId) .. "&w=100&h=100"
+        thumbnail.ScaleType = Enum.ScaleType.Fit
+        thumbnail.Parent = row
+        corner(thumbnail, 6)
+
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Size = UDim2.new(1, -150, 1, 0)
+        nameLabel.Position = UDim2.fromOffset(48, 0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Text = entry.label
+        nameLabel.TextColor3 = COLORS.Text
+        nameLabel.TextSize = 9
+        nameLabel.Font = Enum.Font.GothamBold
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+        nameLabel.Parent = row
+
+        local removeButton = Instance.new("TextButton")
+        removeButton.Size = UDim2.fromOffset(86, 26)
+        removeButton.Position = UDim2.new(1, -94, 0.5, -13)
+        removeButton.BackgroundColor3 = COLORS.Danger
+        removeButton.Text = tr("QUITAR", "REMOVE")
+        removeButton.TextColor3 = COLORS.Text
+        removeButton.TextSize = 9
+        removeButton.Font = Enum.Font.GothamBold
+        removeButton.Parent = row
+        corner(removeButton, 6)
+
+        removeButton.MouseButton1Click:Connect(function()
+            local item = ITEM_BY_NAME[entry.itemName]
+            if item and Enabled[item.name] then
+                toggleItem(item.name, false)
+            end
+            PreviewDirty = true
+            for itemIndex, currentEntry in ipairs(CurrentFitItems) do
+                if currentEntry == entry then
+                    table.remove(CurrentFitItems, itemIndex)
+                    break
+                end
+            end
+            CurrentFitKeys[entry.property .. ":" .. tostring(entry.assetId)] = nil
+            renderCurrentFit()
+            AvatarStatus.Text = entry.label .. "  •  " .. tr("retirado", "removed")
+            AvatarStatus.TextColor3 = COLORS.Muted
+        end)
+    end
+end
+
+local function loadCurrentFit()
+    table.clear(CurrentFitItems)
+    table.clear(CurrentFitKeys)
+
+    local character = getCharacter()
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local description
+    if humanoid then
+        pcall(function()
+            description = humanoid:GetAppliedDescription()
+        end)
+    end
+
+    if description then
+        for _, definition in ipairs(CurrentFitDefinitions) do
+            local ok, value = pcall(function()
+                return description[definition.property]
+            end)
+            if ok then
+                for _, assetId in ipairs(getDescriptionAssetIds(value)) do
+                    registerCurrentFitItem(assetId, definition)
+                end
+            end
+        end
+    end
+
+    for _, item in ipairs(ITEMS) do
+        if Enabled[item.name] then
+            local alreadyListed = false
+            for _, entry in ipairs(CurrentFitItems) do
+                if entry.itemName == item.name then
+                    alreadyListed = true
+                    break
+                end
+            end
+            if not alreadyListed then
+                table.insert(CurrentFitItems, {
+                    itemName = item.name,
+                    assetId = item.id,
+                    label = item.label,
+                    property = item.property or item.name,
+                })
+            end
+        end
+    end
+
+    renderCurrentFit()
+    for _, entry in ipairs(CurrentFitItems) do
+        task.spawn(function()
+            local ok, info = pcall(function()
+                return S.MarketplaceService:GetProductInfo(entry.assetId, Enum.InfoType.Asset)
+            end)
+            if ok and info and info.Name then
+                 entry.label = tostring(info.Name)
+                renderCurrentFit()
+            end
+        end)
+    end
+end
+
+local function syncCurrentFitFromEnabled()
+    table.clear(CurrentFitItems)
+    table.clear(CurrentFitKeys)
+    for _, item in ipairs(ITEMS) do
+        if Enabled[item.name] then
+            local key = (item.property or item.name) .. ":" .. tostring(item.id)
+            if not CurrentFitKeys[key] then
+                CurrentFitKeys[key] = true
+                table.insert(CurrentFitItems, {
+                    itemName = item.name,
+                    assetId = item.id,
+                    label = item.label,
+                    property = item.property or item.name,
+                })
+            end
+        end
+    end
+    renderCurrentFit()
+end
+
+local function renderSavedFits()
+    for _, child in ipairs(FitList:GetChildren()) do
+        if child ~= FitListLayout then
+            child:Destroy()
+        end
+    end
+    table.clear(FitRows)
+
+    for index, fit in ipairs(SavedFits) do
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, 0, 0, 44)
+        row.LayoutOrder = index
+        row.BackgroundColor3 = COLORS.Card
+        row.Parent = FitList
+        corner(row, 8)
+        stroke(row, COLORS.CardHover, 1)
+
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Size = UDim2.new(1, -190, 1, 0)
+        nameLabel.Position = UDim2.fromOffset(10, 0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Text = fit.name
+        nameLabel.TextColor3 = COLORS.Text
+        nameLabel.TextSize = 10
+        nameLabel.Font = Enum.Font.GothamBold
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        nameLabel.Parent = row
+
+        local equipButton = Instance.new("TextButton")
+        equipButton.Size = UDim2.fromOffset(78, 26)
+        equipButton.Position = UDim2.new(1, -168, 0.5, -13)
+        equipButton.BackgroundColor3 = COLORS.AccentDark
+        equipButton.Text = tr("EQUIPAR", "EQUIP")
+        equipButton.TextColor3 = COLORS.Text
+        equipButton.TextSize = 9
+        equipButton.Font = Enum.Font.GothamBold
+        equipButton.Parent = row
+        corner(equipButton, 6)
+
+        local deleteButton = Instance.new("TextButton")
+        deleteButton.Size = UDim2.fromOffset(78, 26)
+        deleteButton.Position = UDim2.new(1, -84, 0.5, -13)
+        deleteButton.BackgroundColor3 = COLORS.Danger
+        deleteButton.Text = tr("BORRAR", "DELETE")
+        deleteButton.TextColor3 = COLORS.Text
+        deleteButton.TextSize = 9
+        deleteButton.Font = Enum.Font.GothamBold
+        deleteButton.Parent = row
+        corner(deleteButton, 6)
+
+        equipButton.MouseButton1Click:Connect(function()
+            SavedFits._ActiveFit = fit
+            clearAvatar()
+            task.wait(0.5)
+            for itemName, savedItem in pairs(fit.items) do
+                local item = ITEM_BY_NAME[itemName]
+                if item then
+                    if savedItem.transform then
+                        Transforms[itemName] = copyTransform(savedItem.transform)
+                    end
+                    toggleItem(itemName, true)
+                    refreshToggle(itemName)
+                    task.wait(0.08)
+                end
+            end
+            AvatarStatus.Text = fit.name .. "  •  " .. tr("equipado", "equipped")
+            AvatarStatus.TextColor3 = COLORS.Success
+            PreviewDirty = true
+            syncCurrentFitFromEnabled()
+        end)
+
+        deleteButton.MouseButton1Click:Connect(function()
+            if SavedFits._ActiveFit == fit then
+                SavedFits._ActiveFit = nil
+            end
+            for savedIndex, savedFit in ipairs(SavedFits) do
+                if savedFit == fit then
+                    table.remove(SavedFits, savedIndex)
+                    break
+                end
+            end
+            renderSavedFits()
+            AvatarStatus.Text = tr("Avatar guardado eliminado", "Saved avatar deleted")
+            AvatarStatus.TextColor3 = COLORS.Muted
+        end)
+
+        table.insert(FitRows, {
+            fit = fit,
+            nameLabel = nameLabel,
+            equipButton = equipButton,
+            deleteButton = deleteButton,
+        })
+    end
+end
+
+UnequipAllButton.MouseButton1Click:Connect(function()
+    clearAvatar()
+    table.clear(CurrentFitItems)
+    table.clear(CurrentFitKeys)
+    renderCurrentFit()
+    AvatarStatus.Text = tr("Accesorios y ropa retirados", "Accessories and clothing removed")
+    AvatarStatus.TextColor3 = COLORS.Success
+end)
+
+SaveFitButton.MouseButton1Click:Connect(function()
+    loadCurrentFit()
+    FitNumber += 1
+    local fit = captureFit()
+    fit.name = "Fit " .. tostring(FitNumber)
+    table.insert(SavedFits, fit)
+    SavedFits._ActiveFit = fit
+    renderSavedFits()
+    AvatarStatus.Text = fit.name .. "  •  " .. tr("guardado correctamente", "saved successfully")
+    AvatarStatus.TextColor3 = COLORS.Success
+end)
+
+renderSavedFits()
+
+local SectionLabels = {}
+local SectionTranslations = {
+    ["Seleccionar accesorio"] = "Select accessory",
+    ["Ajustes finos"] = "Fine adjustments",
+}
+
+local function header(text, order)
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -4, 0, 24)
+    label.LayoutOrder = order
+    label.BackgroundTransparency = 1
+    label.Text = string.upper(tr(text, SectionTranslations[text] or text))
+    label.TextColor3 = COLORS.Accent
+    label.TextSize = 10
+    label.Font = Enum.Font.GothamBold
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = EditorPage
+    SectionLabels[text] = label
+end
+
+header("Seleccionar accesorio", 1)
+
+local Selector = Instance.new("Frame")
+Selector.Size = UDim2.new(1, -4, 0, 42)
+Selector.LayoutOrder = 2
+Selector.BackgroundColor3 = COLORS.Card
+Selector.Parent = EditorPage
+corner(Selector, 8)
+
+local SelectorButton = Instance.new("TextButton")
+SelectorButton.Size = UDim2.new(1, -12, 1, -8)
+SelectorButton.Position = UDim2.fromOffset(6, 4)
+SelectorButton.BackgroundColor3 = COLORS.CardHover
+SelectorButton.Text = tr("ACCESORIO: NINGUNO  ▾", "ACCESSORY: NONE  ▾")
+SelectorButton.TextColor3 = COLORS.Text
+SelectorButton.TextSize = 11
+SelectorButton.Font = Enum.Font.GothamBold
+SelectorButton.Parent = Selector
+corner(SelectorButton, 6)
+
+local SelectorList = Instance.new("Frame")
+SelectorList.Size = UDim2.new(1, -12, 0, 0)
+SelectorList.Position = UDim2.new(0, 6, 1, 2)
+SelectorList.BackgroundColor3 = COLORS.Background
+SelectorList.ClipsDescendants = true
+SelectorList.ZIndex = 20
+SelectorList.Parent = Selector
+corner(SelectorList, 6)
+local SelectorLayout = Instance.new("UIListLayout")
+SelectorLayout.Parent = SelectorList
+
+local editorLabels = {}
+local function updateEditor()
+    SelectorButton.Text = tr("ACCESORIO: ", "ACCESSORY: ")
+        .. (SelectedItem and ITEM_BY_NAME[SelectedItem].label or tr("NINGUNO", "NONE")) .. "  ▾"
+    for key, label in pairs(editorLabels) do
+        local value = 0
+        if SelectedItem then value = Transforms[SelectedItem][key] end
+        local labelName = ({
+            Scale = tr("ESCALA", "SCALE"),
+            PosX = "POS X",
+            PosY = "POS Y",
+            PosZ = "POS Z",
+            RotX = "ROT X",
+            RotY = "ROT Y",
+            RotZ = "ROT Z",
+        })[key] or key
+        label.Text = labelName .. ": " .. string.format("%.2f", value)
+    end
+end
+
+local selectorOpen = false
+SelectorButton.MouseButton1Click:Connect(function()
+    selectorOpen = not selectorOpen
+    SelectorList.Size = UDim2.new(1, -12, 0, selectorOpen and (#ITEMS * 27) or 0)
+end)
+
+createSelectorOption = function(item, order)
+    if item.SelectorCreated then return end
+    item.SelectorCreated = true
+    local option = Instance.new("TextButton")
+    option.Size = UDim2.new(1, 0, 0, 27)
+    option.LayoutOrder = order or #ITEMS
+    option.BackgroundColor3 = COLORS.Card
+    option.Text = item.label
+    option.TextColor3 = COLORS.Text
+    option.TextSize = 10
+    option.Font = Enum.Font.GothamMedium
+    option.ZIndex = 21
+    option.Parent = SelectorList
+    option.MouseButton1Click:Connect(function()
+        SelectedItem = item.name
+        selectorOpen = false
+        SelectorList.Size = UDim2.new(1, -12, 0, 0)
+        updateEditor()
+    end)
+end
+
+for index, item in ipairs(ITEMS) do
+    createSelectorOption(item, index)
+end
+
+local SearchPages
+local SearchPageNumber = 0
+local SearchRequest = 0
+local SearchPageCache = {}
+local SearchBusy = false
+local CatalogAccessRequested = false
+local SearchDescription = ""
+local showBundleItems
+local getSearchAccessoryType
+
+local function clearSearchResults()
+    for _, child in ipairs(SearchResultsPage:GetChildren()) do
+        if child ~= SearchResultsLayout then
+            child:Destroy()
+        end
+    end
+end
+
+local function isBundleAccessoryType(assetType)
+    local numeric = tonumber(assetType)
+    if numeric and table.find({ 8, 41, 42, 43, 44, 45, 46, 47, 76, 77 }, numeric) then
+        return true
+    end
+    local value = string.lower(tostring(assetType or ""))
+    return string.find(value, "accessory", 1, true) ~= nil
+        or string.find(value, "hair", 1, true) ~= nil
+        or string.find(value, "hat", 1, true) ~= nil
+        or string.find(value, "face", 1, true) ~= nil
+end
+
+showBundleItems = function(data)
+    local bundleId = tonumber(data.AssetId or data.BundleId or data.Id)
+    if not bundleId then return end
+
+    for _, child in ipairs(BundleItemsPage:GetChildren()) do
+        if child ~= BundleItemsLayout then
+            child:Destroy()
+        end
+    end
+
+    BundleTitle.Text = tostring(data.Name or "ITEMS DEL BUNDLE")
+    BundleModal.Visible = true
+
+    local loading = Instance.new("TextLabel")
+    loading.Size = UDim2.new(1, -8, 0, 34)
+    loading.BackgroundTransparency = 1
+        loading.Text = tr("CARGANDO ITEMS...", "LOADING ITEMS...")
+    loading.TextColor3 = COLORS.Muted
+    loading.TextSize = 10
+    loading.Font = Enum.Font.GothamBold
+    loading.ZIndex = 52
+    loading.Parent = BundleItemsPage
+
+    task.spawn(function()
+        local ok, info = pcall(function()
+                return S.MarketplaceService:GetProductInfo(bundleId, Enum.InfoType.Bundle)
+        end)
+        if loading.Parent then loading:Destroy() end
+        if not ok or not info then
+            local errorLabel = Instance.new("TextLabel")
+            errorLabel.Size = UDim2.new(1, -8, 0, 40)
+            errorLabel.BackgroundTransparency = 1
+            errorLabel.Text = tr("No se pudieron cargar los items de este bundle", "Could not load this bundle's items")
+            errorLabel.TextColor3 = COLORS.Danger
+            errorLabel.TextSize = 10
+            errorLabel.Font = Enum.Font.GothamBold
+            errorLabel.ZIndex = 52
+            errorLabel.Parent = BundleItemsPage
+            return
+        end
+
+        local bundleItems = info.Items or info.BundleItems or {}
+        if #bundleItems == 0 then
+            local emptyLabel = Instance.new("TextLabel")
+            emptyLabel.Size = UDim2.new(1, -8, 0, 40)
+            emptyLabel.BackgroundTransparency = 1
+            emptyLabel.Text = tr("Roblox no devolvió items internos para este bundle", "Roblox returned no items for this bundle")
+            emptyLabel.TextColor3 = COLORS.Muted
+            emptyLabel.TextSize = 10
+            emptyLabel.Font = Enum.Font.GothamBold
+            emptyLabel.ZIndex = 52
+            emptyLabel.Parent = BundleItemsPage
+            return
+        end
+
+        for index, bundleItem in ipairs(bundleItems) do
+            local itemId = tonumber(bundleItem.Id or bundleItem.AssetId)
+            local itemName = tostring(bundleItem.Name or ("ITEM " .. tostring(itemId or index)))
+            local row = Instance.new("Frame")
+            row.Size = UDim2.new(1, -8, 0, 58)
+            row.LayoutOrder = index
+            row.BackgroundColor3 = COLORS.Card
+            row.ZIndex = 52
+            row.Parent = BundleItemsPage
+            corner(row, 8)
+
+            if itemId then
+                local itemThumbnail = Instance.new("ImageLabel")
+                itemThumbnail.Size = UDim2.fromOffset(48, 48)
+                itemThumbnail.Position = UDim2.fromOffset(5, 5)
+                itemThumbnail.BackgroundColor3 = COLORS.CardHover
+                itemThumbnail.Image = "rbxthumb://type=Asset&id=" .. tostring(itemId) .. "&w=420&h=420"
+                itemThumbnail.ScaleType = Enum.ScaleType.Fit
+                itemThumbnail.ZIndex = 53
+                itemThumbnail.Parent = row
+                corner(itemThumbnail, 6)
+            end
+
+            local itemLabel = Instance.new("TextLabel")
+            itemLabel.Size = UDim2.new(1, -154, 1, 0)
+            itemLabel.Position = UDim2.fromOffset(64, 0)
+            itemLabel.BackgroundTransparency = 1
+            itemLabel.Text = itemName .. (itemId and ("  •  ID: " .. tostring(itemId)) or "")
+            itemLabel.TextColor3 = COLORS.Text
+            itemLabel.TextSize = 10
+            itemLabel.Font = Enum.Font.GothamBold
+            itemLabel.TextXAlignment = Enum.TextXAlignment.Left
+            itemLabel.ZIndex = 53
+            itemLabel.Parent = row
+
+            if itemId then
+                local bundleUse = Instance.new("TextButton")
+                bundleUse.Size = UDim2.fromOffset(78, 24)
+                bundleUse.Position = UDim2.new(1, -84, 0.5, -12)
+                bundleUse.BackgroundColor3 = COLORS.AccentDark
+                bundleUse.Text = tr("USAR", "USE")
+                bundleUse.TextColor3 = COLORS.Text
+                bundleUse.TextSize = 9
+                bundleUse.Font = Enum.Font.GothamBold
+                bundleUse.ZIndex = 53
+                bundleUse.Parent = row
+                corner(bundleUse, 6)
+                bundleUse.MouseButton1Click:Connect(function()
+                    local catalogItem = ITEM_BY_ID[itemId]
+                    if not catalogItem then
+                        local bundleAssetType = bundleItem.AssetType or bundleItem.Type or bundleItem.ItemType
+                        local bundleKind
+                        if not isBundleAccessoryType(bundleAssetType) then
+                            bundleKind = "catalog"
+                        end
+                        catalogItem = registerItem({
+                            name = "Bundle_" .. tostring(itemId),
+                            label = string.upper(itemName),
+                            id = itemId,
+                            accessoryType = getSearchAccessoryType(bundleAssetType),
+                            assetType = bundleAssetType,
+                            kind = bundleKind,
+                            searchCategory = SearchCategory,
+                            searchData = {
+                                AssetId = itemId,
+                                AssetType = bundleAssetType,
+                                Name = itemName,
+                            },
+                        })
+                        createSelectorOption(catalogItem, #ITEMS)
+                    end
+                    toggleItem(catalogItem.name, not Enabled[catalogItem.name])
+                    bundleUse.Text = Enabled[catalogItem.name] and tr("QUITAR", "REMOVE") or tr("USAR", "USE")
+                    bundleUse.BackgroundColor3 = Enabled[catalogItem.name] and COLORS.Success or COLORS.AccentDark
+                    SearchStatus.Text = Enabled[catalogItem.name]
+                        and (itemName .. " " .. tr("cargado", "loaded"))
+                        or (itemName .. " " .. tr("retirado", "removed"))
+                    SearchStatus.TextColor3 = Enabled[catalogItem.name] and COLORS.Success or COLORS.Muted
+                end)
+            end
+        end
+    end)
+end
+
+getSearchAccessoryType = function(assetType)
+    local value = string.lower(tostring(assetType or ""))
+    local numericNames = {
+        [8] = "Hat",
+        [41] = "Hair",
+        [42] = "Face",
+        [43] = "Neck",
+        [44] = "Shoulder",
+        [45] = "Front",
+        [46] = "Back",
+        [47] = "Waist",
+        [76] = "Eyebrow",
+        [77] = "Eyelash",
+    }
+    local names = {
+        hairaccessory = "Hair",
+        faceaccessory = "Face",
+        neckaccessory = "Neck",
+        shoulderaccessory = "Shoulder",
+        frontaccessory = "Front",
+        backaccessory = "Back",
+        waistaccessory = "Waist",
+        eyebrowaccessory = "Eyebrow",
+        eyelashaccessory = "Eyelash",
+        hat = "Hat",
+    }
+    local numericName = numericNames[tonumber(assetType)]
+    if numericName then
+        local ok, accessoryType = pcall(function()
+            return Enum.AccessoryType[numericName]
+        end)
+        if ok and accessoryType then return accessoryType end
+    end
+    for key, enumName in pairs(names) do
+        if string.find(value, key, 1, true) then
+            local ok, accessoryType = pcall(function()
+                return Enum.AccessoryType[enumName]
+            end)
+            if ok and accessoryType then return accessoryType end
+        end
+    end
+    return Enum.AccessoryType.Hat
+end
+
+local function equipFullBundle(data, button)
+    local bundleId = tonumber(data.AssetId or data.BundleId or data.Id)
+    if not bundleId then return end
+
+    if BundleEnabled[bundleId] then
+        for _, itemName in ipairs(BundleItemNames[bundleId] or {}) do
+            if Enabled[itemName] then
+                toggleItem(itemName, false)
+            end
+        end
+        BundleEnabled[bundleId] = false
+        button.Active = true
+        button.AutoButtonColor = true
+        button.Text = tr("EQUIPAR CUERPO", "EQUIP BODY")
+        button.BackgroundColor3 = COLORS.AccentDark
+        SearchStatus.Text = tr("Cuerpo retirado", "Body removed")
+        SearchStatus.TextColor3 = COLORS.Muted
+        return
+    end
+
+    button.Active = false
+    button.AutoButtonColor = false
+    button.Text = "..."
+
+    task.spawn(function()
+        local ok, info = pcall(function()
+            return S.MarketplaceService:GetProductInfo(bundleId, Enum.InfoType.Bundle)
+        end)
+        local bundleItems = ok and info and (info.Items or info.BundleItems or {}) or {}
+        if not ok or not info or #bundleItems == 0 then
+            button.Active = true
+            button.AutoButtonColor = true
+            button.Text = tr("EQUIPAR CUERPO", "EQUIP BODY")
+            SearchStatus.Text = tr(
+                "No se pudieron cargar los items del cuerpo",
+                "The body items could not be loaded"
+            )
+            SearchStatus.TextColor3 = COLORS.Danger
+            return
+        end
+
+        local equippedNames = {}
+        for _, bundleItem in ipairs(bundleItems) do
+            local itemId = tonumber(bundleItem.Id or bundleItem.AssetId)
+            if itemId then
+                local catalogItem = ITEM_BY_ID[itemId]
+                if not catalogItem then
+                    local bundleAssetType = bundleItem.AssetType or bundleItem.Type or bundleItem.ItemType
+                    local bundleKind
+                    if not isBundleAccessoryType(bundleAssetType) then
+                        bundleKind = "catalog"
+                    end
+                    catalogItem = registerItem({
+                        name = "Bundle_" .. tostring(itemId),
+                        label = string.upper(tostring(bundleItem.Name or ("ITEM " .. tostring(itemId)))),
+                        id = itemId,
+                        accessoryType = getSearchAccessoryType(bundleAssetType),
+                        assetType = bundleAssetType,
+                        kind = bundleKind,
+                        searchCategory = SearchCategory,
+                        searchData = {
+                            AssetId = itemId,
+                            AssetType = bundleAssetType,
+                            Name = bundleItem.Name,
+                        },
+                    })
+                    createSelectorOption(catalogItem, #ITEMS)
+                end
+                if catalogItem and not Enabled[catalogItem.name] then
+                    toggleItem(catalogItem.name, true)
+                    table.insert(equippedNames, catalogItem.name)
+                    task.wait(0.08)
+                end
+            end
+        end
+
+        BundleItemNames[bundleId] = equippedNames
+        BundleEnabled[bundleId] = true
+        button.Active = true
+        button.AutoButtonColor = true
+        button.Text = tr("QUITAR CUERPO", "REMOVE BODY")
+        button.BackgroundColor3 = COLORS.Success
+        SearchStatus.Text = tr("Cuerpo equipado completo", "Complete body equipped")
+        SearchStatus.TextColor3 = COLORS.Success
+    end)
+end
+
+local function getEnumItems(enumType, names)
+    local values = {}
+    for _, name in ipairs(names) do
+        local ok, value = pcall(function()
+            return enumType[name]
+        end)
+        if ok and value then
+            table.insert(values, value)
+        end
+    end
+    return values
+end
+
+local function getCategoryAssetTypes(category)
+    if category == "Head" then
+        return getEnumItems(Enum.AvatarAssetType, { "Hat", "DynamicHead" })
+    elseif category == "Face" then
+        return getEnumItems(Enum.AvatarAssetType, { "FaceAccessory" })
+    elseif category == "Neck" then
+        return getEnumItems(Enum.AvatarAssetType, { "NeckAccessory" })
+    elseif category == "Shoulder" then
+        return getEnumItems(Enum.AvatarAssetType, { "ShoulderAccessory" })
+    elseif category == "Front" then
+        return getEnumItems(Enum.AvatarAssetType, { "FrontAccessory" })
+    elseif category == "Back" then
+        return getEnumItems(Enum.AvatarAssetType, { "BackAccessory" })
+    elseif category == "Waist" then
+        return getEnumItems(Enum.AvatarAssetType, { "WaistAccessory" })
+    elseif category == "Hair" then
+        return getEnumItems(Enum.AvatarAssetType, { "HairAccessory" })
+    elseif category == "Eyebrow" then
+        return getEnumItems(Enum.AvatarAssetType, { "EyebrowAccessory" })
+    elseif category == "Eyelash" then
+        return getEnumItems(Enum.AvatarAssetType, { "EyelashAccessory" })
+    elseif category == "Bodies" then
+        return nil
+    elseif category == "Clothing" then
+        return getEnumItems(Enum.AvatarAssetType, {
+            "TShirt", "TShirtAccessory", "Shirt", "ShirtAccessory",
+            "Pants", "PantsAccessory", "Jacket", "JacketAccessory",
+            "Sweater", "SweaterAccessory", "Shorts", "ShortsAccessory",
+            "DressSkirt", "DressSkirtAccessory", "LeftShoe",
+            "RightShoe", "LeftShoeAccessory", "RightShoeAccessory",
+        })
+    elseif category == "TShirt" then
+        return getEnumItems(Enum.AvatarAssetType, { "TShirtAccessory", "ShirtAccessory" })
+    elseif category == "ClassicTShirt" then
+        return getEnumItems(Enum.AvatarAssetType, { "TShirt" })
+    elseif category == "ClassicShirt" then
+        return getEnumItems(Enum.AvatarAssetType, { "Shirt" })
+    elseif category == "Pants" then
+        return getEnumItems(Enum.AvatarAssetType, { "PantsAccessory" })
+    elseif category == "ClassicPants" then
+        return getEnumItems(Enum.AvatarAssetType, { "Pants" })
+    elseif category == "Jacket" then
+        return getEnumItems(Enum.AvatarAssetType, { "JacketAccessory" })
+    elseif category == "Sweater" then
+        return getEnumItems(Enum.AvatarAssetType, { "SweaterAccessory" })
+    elseif category == "Shorts" then
+        return getEnumItems(Enum.AvatarAssetType, { "ShortsAccessory" })
+    elseif category == "DressSkirt" then
+        return getEnumItems(Enum.AvatarAssetType, { "DressSkirtAccessory" })
+    elseif category == "Shoes" then
+        return getEnumItems(Enum.AvatarAssetType, { "LeftShoeAccessory", "RightShoeAccessory" })
+    end
+    return nil
+end
+
+local function getCategoryBundleTypes(category)
+    if category == "Bodies" then
+        return getEnumItems(Enum.BundleType, { "Body", "Rthro", "Avatar" })
+    end
+    return nil
+end
+
+local function isBundleResult(data)
+    local itemType = string.lower(tostring(
+        data.ItemType
+            or data.ProductType
+            or data.Type
+            or data.AssetType
+            or ""
+    ))
+    return data.BundleType ~= nil
+        or data.BundleId ~= nil
+        or data.IsBundle == true
+        or string.find(itemType, "bundle", 1, true) ~= nil
+end
+
+local function isAccessoryResult(data)
+    if isBundleResult(data) then return false end
+    local assetType = tonumber(data.AssetType)
+    if assetType and table.find({ 8, 41, 42, 43, 44, 45, 46, 47, 76, 77 }, assetType) then
+        return true
+    end
+    local value = string.lower(tostring(data.AssetType or ""))
+    return string.find(value, "accessory", 1, true) ~= nil or string.find(value, "hat", 1, true) ~= nil
+end
+
+local function addSearchItem(data)
+    local assetId = tonumber(data.AssetId or data.BundleId or data.Id)
+    if not assetId then return end
+
+    local item = ITEM_BY_ID[assetId]
+    local itemName = item and item.name or ("Catalog_" .. tostring(assetId))
+    local itemLabel = item and item.label or string.upper(tostring(data.Name or ("ITEM " .. tostring(assetId))))
+    local bundleResult = isBundleResult(data)
+    local offSale = data.IsOffSale == true or data.IsForSale == false
+    local catalogKind
+    if not isAccessoryResult(data) then
+        catalogKind = "catalog"
+    end
+    local canUse = bundleResult or (
+        item ~= nil
+        or isAccessoryResult(data)
+        or SearchCategory == "Head"
+        or SearchCategory == "Face"
+        or SearchCategory == "Neck"
+        or SearchCategory == "Shoulder"
+        or SearchCategory == "Front"
+        or SearchCategory == "Back"
+        or SearchCategory == "Waist"
+        or SearchCategory == "Hair"
+        or SearchCategory == "Eyebrow"
+        or SearchCategory == "Eyelash"
+        or SearchCategory == "Bodies"
+        or SearchCategory == "Clothing"
+        or SearchCategory == "TShirt"
+        or SearchCategory == "ClassicTShirt"
+        or SearchCategory == "ClassicShirt"
+        or SearchCategory == "Pants"
+        or SearchCategory == "ClassicPants"
+        or SearchCategory == "Jacket"
+        or SearchCategory == "Sweater"
+        or SearchCategory == "Shorts"
+        or SearchCategory == "DressSkirt"
+        or SearchCategory == "Shoes"
+        or SearchCategory == "All"
+    )
+
+    local card = Instance.new("Frame")
+    card.Size = UDim2.fromOffset(150, bundleResult and 184 or 154)
+    card.LayoutOrder = SearchPageNumber * 100 + #SearchResultsPage:GetChildren()
+    card.BackgroundColor3 = COLORS.Card
+    card.Parent = SearchResultsPage
+    corner(card, 8)
+    stroke(card, COLORS.CardHover, 1)
+
+    local thumbnail = Instance.new("ImageLabel")
+    thumbnail.Size = UDim2.new(1, -12, 0, 74)
+    thumbnail.Position = UDim2.fromOffset(6, 6)
+    thumbnail.BackgroundColor3 = COLORS.CardHover
+    local thumbnailType = bundleResult and "BundleThumbnail" or "Asset"
+    thumbnail.Image = "rbxthumb://type=" .. thumbnailType .. "&id=" .. tostring(assetId) .. "&w=150&h=150"
+    thumbnail.ScaleType = Enum.ScaleType.Fit
+    thumbnail.Parent = card
+    corner(thumbnail, 6)
+
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(1, -12, 0, 30)
+    nameLabel.Position = UDim2.fromOffset(6, 84)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Text = tostring(data.Name or itemLabel)
+    nameLabel.TextColor3 = COLORS.Text
+    nameLabel.TextSize = 9
+    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.TextWrapped = true
+    nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+    nameLabel.Parent = card
+
+    local idLabel = Instance.new("TextLabel")
+    idLabel.Size = UDim2.new(1, -12, 0, 14)
+    idLabel.Position = UDim2.fromOffset(6, 112)
+    idLabel.BackgroundTransparency = 1
+    idLabel.Text = "ID: " .. tostring(assetId) .. (offSale and " • OFFSALE" or "")
+    idLabel.TextColor3 = COLORS.Muted
+    idLabel.TextSize = 8
+    idLabel.Font = Enum.Font.Gotham
+    idLabel.TextXAlignment = Enum.TextXAlignment.Left
+    idLabel.Parent = card
+
+    local useButton = Instance.new("TextButton")
+    useButton.Size = UDim2.new(1, -12, 0, 24)
+    useButton.Position = UDim2.new(0, 6, 1, bundleResult and -56 or -30)
+    useButton.BackgroundColor3 = COLORS.AccentDark
+    useButton.Text = item
+        and (Enabled[item.name] and tr("QUITAR", "REMOVE") or tr("USAR", "USE"))
+        or (bundleResult
+            and (BundleEnabled[assetId] and tr("QUITAR CUERPO", "REMOVE BODY")
+                or tr("EQUIPAR CUERPO", "EQUIP BODY"))
+            or (canUse and tr("USAR", "USE") or tr("VER", "VIEW")))
+    useButton.TextColor3 = COLORS.Text
+    useButton.TextSize = 9
+    useButton.Font = Enum.Font.GothamBold
+    useButton.Parent = card
+    corner(useButton, 6)
+
+    useButton.MouseButton1Click:Connect(function()
+        if bundleResult then
+            equipFullBundle(data, useButton)
+            return
+        end
+        if not canUse then
+            SearchStatus.Text = tr(
+                "Este resultado se puede consultar, pero no se aplica como accesorio",
+                "This result can be viewed but cannot be applied as an accessory"
+            )
+            SearchStatus.TextColor3 = COLORS.Muted
+            return
+        end
+        local catalogItem = ITEM_BY_ID[assetId]
+        if not catalogItem then
+            catalogItem = registerItem({
+                name = itemName,
+                label = itemLabel,
+                id = assetId,
+                accessoryType = getSearchAccessoryType(data.AssetType),
+                assetType = data.AssetType,
+                kind = catalogKind,
+                searchCategory = SearchCategory,
+                searchData = data,
+            })
+            createSelectorOption(catalogItem, #ITEMS)
+        end
+        toggleItem(catalogItem.name, not Enabled[catalogItem.name])
+        useButton.Text = Enabled[catalogItem.name] and tr("QUITAR", "REMOVE") or tr("USAR", "USE")
+        useButton.BackgroundColor3 = Enabled[catalogItem.name] and COLORS.Success or COLORS.AccentDark
+        SearchStatus.Text = Enabled[catalogItem.name]
+            and (catalogItem.label .. " " .. tr("cargado", "loaded"))
+            or (catalogItem.label .. " " .. tr("retirado", "removed"))
+        SearchStatus.TextColor3 = Enabled[catalogItem.name] and COLORS.Success or COLORS.Muted
+    end)
+
+    if bundleResult then
+        local showItemsButton = Instance.new("TextButton")
+        showItemsButton.Size = UDim2.new(1, -12, 0, 24)
+        showItemsButton.Position = UDim2.new(0, 6, 1, -30)
+        showItemsButton.BackgroundColor3 = COLORS.CardHover
+        showItemsButton.Text = tr("VER ITEMS", "SHOW ITEMS")
+        showItemsButton.TextColor3 = COLORS.Text
+        showItemsButton.TextSize = 9
+        showItemsButton.Font = Enum.Font.GothamBold
+        showItemsButton.Parent = card
+        corner(showItemsButton, 6)
+        showItemsButton.MouseButton1Click:Connect(function()
+            showBundleItems(data)
+        end)
+    end
+end
+
+function renderSearchPage(pageData)
+    clearSearchResults()
+    local currentPage = pageData or (SearchPages and SearchPages:GetCurrentPage() or {})
+    local visibleCount = 0
+    for _, data in ipairs(currentPage) do
+        if SearchCategory ~= "Bodies" or isBundleResult(data) then
+            addSearchItem(data)
+            visibleCount += 1
+        end
+    end
+    if visibleCount == 0 then
+        SearchStatus.Text = tr("No se encontraron items", "No items found")
+        SearchStatus.TextColor3 = COLORS.Muted
+    else
+        SearchStatus.Text = "Resultados: " .. SearchDescription
+        SearchStatus.TextColor3 = COLORS.Muted
+    end
+    SearchPageInfo.Text = tr("PÁGINA ", "PAGE ") .. tostring(SearchPageNumber)
+    SavedHeader.Text = tr("ACCS SAVE", "SAVED ACCESSORIES")
+    SearchBackButton.Active = SearchPageNumber > 1
+    SearchBackButton.AutoButtonColor = SearchBackButton.Active
+    SearchBackButton.TextColor3 = SearchBackButton.Active and COLORS.Text or COLORS.Muted
+    SearchNextButton.Active = SearchPages and (
+        SearchPageCache[SearchPageNumber + 1] ~= nil
+        or not SearchPages.IsFinished
+    ) or false
+    SearchNextButton.AutoButtonColor = SearchNextButton.Active
+    SearchNextButton.TextColor3 = SearchNextButton.Active and COLORS.Text or COLORS.Muted
+end
+
+searchCatalog = function(forceSearch)
+    local keyword = SearchBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
+    local creator = CreatorBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
+    creator = creator:gsub("^@", "")
+    if keyword == "" and creator == "" and not forceSearch then
+        ShowingSearchResults = false
+        setTab(CurrentTab)
+        SearchStatus.Text = tr("Escribe un accesorio o un creador para buscar", "Type an accessory or creator to search")
+        SearchStatus.TextColor3 = COLORS.Muted
+        return
+    end
+
+    SearchBusy = true
+    SearchRequest += 1
+    table.clear(SearchPageCache)
+    local requestId = SearchRequest
+    local selectedCategory = SearchCategory
+    SearchDescription = keyword ~= "" and keyword or tr("todos los items", "all items")
+    if creator ~= "" then
+        SearchDescription = SearchDescription .. " • " .. tr("creador: ", "creator: ") .. creator
+    end
+    SearchDescription = SearchDescription .. " • " .. CategoryLabels[selectedCategory]()
+    SearchButton.Text = "..."
+    SearchStatus.Text = tr("Buscando en el catálogo...", "Searching catalog...")
+    SearchStatus.TextColor3 = COLORS.Muted
+    ShowingSearchResults = true
+    setTab(CurrentTab)
+
+    task.spawn(function()
+        local ok, pages = pcall(function()
+            if not CatalogAccessRequested then
+                CatalogAccessRequested = true
+                pcall(function()
+                    S.AvatarEditorService:PromptAllowInventoryReadAccess()
+                    S.AvatarEditorService.PromptAllowInventoryReadAccessCompleted:Wait()
+                end)
+            end
+            local parameters = CatalogSearchParams.new()
+            if keyword ~= "" then
+                parameters.SearchKeyword = keyword
+            end
+            if creator ~= "" then
+                local creatorId = tonumber(creator)
+                if creatorId then
+                    parameters.CreatorId = creatorId
+                else
+                    parameters.CreatorName = creator
+                end
+            end
+            parameters.IncludeOffSale = true
+            parameters.Limit = 30
+            local assetTypes = getCategoryAssetTypes(selectedCategory)
+            local bundleTypes = getCategoryBundleTypes(selectedCategory)
+            if assetTypes and #assetTypes > 0 then
+                parameters.AssetTypes = assetTypes
+            end
+            if bundleTypes and #bundleTypes > 0 then
+                parameters.BundleTypes = bundleTypes
+            end
+            return S.AvatarEditorService:SearchCatalogAsync(parameters)
+        end)
+
+        if requestId ~= SearchRequest then return end
+        SearchBusy = false
+        SearchButton.Text = tr("BUSCAR", "SEARCH")
+
+        if not ok or not pages then
+            SearchStatus.Text = tr("Roblox no permitió realizar la búsqueda", "Roblox did not allow the search")
+            SearchStatus.TextColor3 = COLORS.Danger
+            return
+        end
+
+        SearchPages = pages
+        SearchPageNumber = 1
+        SearchPageCache[1] = SearchPages:GetCurrentPage()
+        renderSearchPage(SearchPageCache[1])
+    end)
+end
+
+SearchButton.MouseButton1Click:Connect(searchCatalog)
+SearchBox.FocusLost:Connect(function(enterPressed)
+    if enterPressed then searchCatalog() end
+end)
+CreatorBox.FocusLost:Connect(function(enterPressed)
+    if enterPressed then searchCatalog() end
+end)
+SearchNextButton.MouseButton1Click:Connect(function()
+    if SearchBusy or not SearchPages then return end
+    if SearchPageCache[SearchPageNumber + 1] then
+        SearchPageNumber += 1
+        renderSearchPage(SearchPageCache[SearchPageNumber])
+        return
+    end
+    if SearchPages.IsFinished then return end
+    SearchBusy = true
+    SearchNextButton.Text = "..."
+    task.spawn(function()
+        local ok = pcall(function()
+            SearchPages:AdvanceToNextPageAsync()
+        end)
+        SearchBusy = false
+        SearchNextButton.Text = tr("SIGUIENTE", "NEXT")
+        if ok then
+            SearchPageNumber += 1
+            SearchPageCache[SearchPageNumber] = SearchPages:GetCurrentPage()
+            renderSearchPage(SearchPageCache[SearchPageNumber])
+        else
+            SearchStatus.Text = tr("No se pudo cargar la siguiente página", "Could not load the next page")
+            SearchStatus.TextColor3 = COLORS.Danger
+        end
+    end)
+end)
+
+SearchBackButton.MouseButton1Click:Connect(function()
+    if SearchBusy or SearchPageNumber <= 1 then return end
+    local previousPage = SearchPageCache[SearchPageNumber - 1]
+    if not previousPage then return end
+    SearchPageNumber -= 1
+    renderSearchPage(previousPage)
+end)
+
+header("Ajustes finos", 3)
+
+local ControlTranslations = {
+    ESCALA = "SCALE",
+    ["POS X"] = "POS X",
+    ["POS Y"] = "POS Y",
+    ["POS Z"] = "POS Z",
+    ["ROT X"] = "ROT X",
+    ["ROT Y"] = "ROT Y",
+    ["ROT Z"] = "ROT Z",
+}
+function createControl(labelText, key, step, order)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, -4, 0, 34)
+    row.LayoutOrder = order
+    row.BackgroundColor3 = COLORS.Card
+    row.Parent = EditorPage
+    corner(row, 8)
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -112, 1, 0)
+    label.Position = UDim2.fromOffset(10, 0)
+    label.BackgroundTransparency = 1
+    label.Text = tr(labelText, ControlTranslations[labelText] or labelText) .. ": 0.00"
+    label.TextColor3 = COLORS.Muted
+    label.TextSize = 10
+    label.Font = Enum.Font.GothamMedium
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = row
+    editorLabels[key] = label
+
+    local minus = Instance.new("TextButton")
+    minus.Size = UDim2.fromOffset(34, 24)
+    minus.Position = UDim2.new(1, -78, 0.5, -12)
+    minus.BackgroundColor3 = COLORS.CardHover
+    minus.Text = "−"
+    minus.TextColor3 = COLORS.Text
+    minus.TextSize = 16
+    minus.Font = Enum.Font.GothamBold
+    minus.Parent = row
+    corner(minus, 6)
+
+    local plus = Instance.new("TextButton")
+    plus.Size = UDim2.fromOffset(34, 24)
+    plus.Position = UDim2.new(1, -40, 0.5, -12)
+    plus.BackgroundColor3 = COLORS.CardHover
+    plus.Text = "+"
+    plus.TextColor3 = COLORS.Text
+    plus.TextSize = 16
+    plus.Font = Enum.Font.GothamBold
+    plus.Parent = row
+    corner(plus, 6)
+
+    local function change(delta)
+        if not SelectedItem then return end
+        local values = Transforms[SelectedItem]
+        values[key] = round2(values[key] + delta)
+        if key == "Scale" then values[key] = math.max(0.05, values[key]) end
+        local accessory = deduplicateItem(SelectedItem)
+        if accessory then applyTransforms(accessory, SelectedItem) end
+        updateEditor()
+    end
+    minus.MouseButton1Click:Connect(function() change(-step) end)
+    plus.MouseButton1Click:Connect(function() change(step) end)
+end
+
+createControl("ESCALA", "Scale", 0.1, 4)
+createControl("POS X", "PosX", 0.1, 5)
+createControl("POS Y", "PosY", 0.1, 6)
+createControl("POS Z", "PosZ", 0.1, 7)
+createControl("ROT X", "RotX", 15, 8)
+createControl("ROT Y", "RotY", 15, 9)
+createControl("ROT Z", "RotZ", 15, 10)
+
+local ResetButton = Instance.new("TextButton")
+ResetButton.Size = UDim2.new(1, -4, 0, 36)
+ResetButton.LayoutOrder = 11
+ResetButton.BackgroundColor3 = COLORS.AccentDark
+ResetButton.Text = tr("RESTABLECER ACCESORIO SELECCIONADO", "RESET SELECTED ACCESSORY")
+ResetButton.TextColor3 = COLORS.Text
+ResetButton.TextSize = 10
+ResetButton.Font = Enum.Font.GothamBold
+ResetButton.Parent = EditorPage
+corner(ResetButton, 8)
+ResetButton.MouseButton1Click:Connect(function()
+    if not SelectedItem then return end
+    Transforms[SelectedItem] = {
+        Scale = 1, PosX = 0, PosY = 0, PosZ = 0,
+        RotX = 0, RotY = 0, RotZ = 0,
+    }
+    local accessory = deduplicateItem(SelectedItem)
+    if accessory then applyTransforms(accessory, SelectedItem) end
+    updateEditor()
+end)
+
+function refreshLanguage()
+    Title.Text = tr("CATÁLOGO  DE  ROPA", "CLOTHING  CATALOG")
+    CatalogTab.Text = tr("CATÁLOGO", "CATALOG")
+    SavedTab.Text = tr("ACCS SAVE", "SAVED")
+    EditorTab.Text = tr("EDITOR 3D", "3D EDITOR")
+    AvatarTab.Text = tr("AVATAR", "AVATAR")
+    SearchBox.PlaceholderText = tr("BUSCAR ACCESORIOS DE ROBLOX...", "SEARCH ROBLOX ACCESSORIES...")
+    CreatorBox.PlaceholderText = tr("CREADOR: USUARIO O GRUPO", "CREATOR: USER OR GROUP")
+    SearchButton.Text = SearchBusy and "..." or tr("BUSCAR", "SEARCH")
+    SearchBackButton.Text = tr("ATRÁS", "BACK")
+    SearchNextButton.Text = SearchBusy and "..." or tr("SIGUIENTE", "NEXT")
+    SearchPageInfo.Text = tr("PÁGINA ", "PAGE ") .. tostring(SearchPageNumber)
+    SavedHeader.Text = tr("ACCS SAVE", "SAVED ACCESSORIES")
+    CatalogEmpty.Text = tr("Busca algo en el catálogo para ver resultados", "Search the catalog to see results")
+    SearchStatus.Text = tr("Busca por accesorio o creador", "Search by accessory or creator")
+    BundleTitle.Text = tr("ITEMS DEL BUNDLE", "BUNDLE ITEMS")
+    ResetButton.Text = tr("RESTABLECER ACCESORIO SELECCIONADO", "RESET SELECTED ACCESSORY")
+    AvatarTitle.Text = tr("MI AVATAR", "MY AVATAR")
+    AvatarDescription.Text = tr(
+        "Quita el avatar actual o guarda tus combinaciones para volver a equiparlas.",
+        "Unequip the current avatar or save your outfits to equip them again."
+    )
+    UnequipAllButton.Text = tr("DESEQUIPAR TODO", "UNEQUIP ALL")
+    AvatarStatus.Text = tr("Tus avatares guardados aparecerán aquí.", "Your saved avatars will appear here.")
+    PreviewControls.SkinTitle.Text = tr("TONO DE PIEL", "SKIN TONE")
+    PreviewLabel.Text = tr("TU PERSONAJE", "YOUR CHARACTER")
+    CurrentFitTitle.Text = tr("TU FIT ACTUAL", "CURRENT FIT")
+    FitsTitle.Text = tr("AVATARES GUARDADOS", "SAVED AVATARS")
+    for _, row in ipairs(FitRows) do
+        row.equipButton.Text = tr("EQUIPAR", "EQUIP")
+        row.deleteButton.Text = tr("BORRAR", "DELETE")
+    end
+    renderCurrentFit()
+    LanguageButton.Text = Language == "es" and "EN" or "ES"
+    updateCategoryButtons()
+    updateEditor()
+    for itemName in pairs(toggleButtons) do
+        refreshToggle(itemName)
+    end
+    for text, label in pairs(SectionLabels) do
+        label.Text = string.upper(tr(text, SectionTranslations[text] or text))
+    end
+    for _, descendant in ipairs(SearchResultsPage:GetDescendants()) do
+        if descendant:IsA("TextButton") then
+            local labels = {
+                USAR = tr("USAR", "USE"),
+                USE = tr("USAR", "USE"),
+                QUITAR = tr("QUITAR", "REMOVE"),
+                REMOVE = tr("QUITAR", "REMOVE"),
+                VER = tr("VER", "VIEW"),
+                VIEW = tr("VER", "VIEW"),
+                ["VER ITEMS"] = tr("VER ITEMS", "SHOW ITEMS"),
+                ["SHOW ITEMS"] = tr("VER ITEMS", "SHOW ITEMS"),
+                ["EQUIPAR CUERPO"] = tr("EQUIPAR CUERPO", "EQUIP BODY"),
+                ["EQUIP BODY"] = tr("EQUIPAR CUERPO", "EQUIP BODY"),
+                ["QUITAR CUERPO"] = tr("QUITAR CUERPO", "REMOVE BODY"),
+                ["REMOVE BODY"] = tr("QUITAR CUERPO", "REMOVE BODY"),
+            }
+            descendant.Text = labels[descendant.Text] or descendant.Text
+        end
+    end
+end
+
+LanguageButton.MouseButton1Click:Connect(function()
+    Language = Language == "es" and "en" or "es"
+    refreshLanguage()
+end)
+
+local Gizmo = Instance.new("Frame")
+Gizmo.Size = UDim2.fromOffset(104, 104)
+Gizmo.BackgroundTransparency = 1
+Gizmo.Visible = false
+Gizmo.ZIndex = 50
+Gizmo.Parent = ScreenGui
+
+function gizmoButton(text, position, color, callback)
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.fromOffset(28, 28)
+    button.Position = position
+    button.BackgroundColor3 = color
+    button.Text = text
+    button.TextColor3 = COLORS.Text
+    button.TextSize = 12
+    button.Font = Enum.Font.GothamBold
+    button.ZIndex = 51
+    button.Parent = Gizmo
+    corner(button, 14)
+    stroke(button, COLORS.Text, 1)
+    button.MouseButton1Click:Connect(callback)
+end
+
+function modifySelected(key, amount)
+    if not SelectedItem then return end
+    Transforms[SelectedItem][key] = round2(Transforms[SelectedItem][key] + amount)
+    if key == "Scale" then Transforms[SelectedItem][key] = math.max(0.05, Transforms[SelectedItem][key]) end
+    local accessory = deduplicateItem(SelectedItem)
+    if accessory then applyTransforms(accessory, SelectedItem) end
+    updateEditor()
+end
+
+gizmoButton("+", UDim2.fromOffset(38, 0), COLORS.Success, function() modifySelected("Scale", 0.1) end)
+gizmoButton("−", UDim2.fromOffset(38, 76), COLORS.Danger, function() modifySelected("Scale", -0.1) end)
+gizmoButton("▲", UDim2.fromOffset(38, 26), COLORS.Accent, function() modifySelected("PosY", 0.1) end)
+gizmoButton("▼", UDim2.fromOffset(38, 52), COLORS.Accent, function() modifySelected("PosY", -0.1) end)
+gizmoButton("◀", UDim2.fromOffset(8, 39), COLORS.Accent, function() modifySelected("PosX", -0.1) end)
+gizmoButton("▶", UDim2.fromOffset(68, 39), COLORS.Accent, function() modifySelected("PosX", 0.1) end)
+gizmoButton("↻", UDim2.fromOffset(68, 8), Color3.fromRGB(214, 142, 45), function() modifySelected("RotY", 15) end)
+
+S.RunService.RenderStepped:Connect(function()
+    updateNetworkBackground()
+    updateAvatarPreview()
+    if CurrentTab ~= "Editor" or not SelectedItem then
+        Gizmo.Visible = false
+        return
+    end
+    local accessory = deduplicateItem(SelectedItem)
+    local handle = accessory and getHandle(accessory)
+    local camera = workspace.CurrentCamera
+    if not handle or not camera then
+        Gizmo.Visible = false
+        return
+    end
+    local point, visible = camera:WorldToViewportPoint(handle.Position)
+    Gizmo.Visible = visible
+    if visible then
+        Gizmo.Position = UDim2.fromOffset(point.X - 52, point.Y - 52)
+    end
+end)
+
+LocalPlayer.CharacterAdded:Connect(handleCharacterAdded)
+LocalPlayer.CharacterAdded:Connect(function(character)
+    connectPreviewCharacter(character)
+    task.delay(3, loadCurrentFit)
+end)
+if LocalPlayer.Character then
+    connectPreviewCharacter(LocalPlayer.Character)
+    task.spawn(function() handleCharacterAdded(LocalPlayer.Character) end)
+        task.delay(3, loadCurrentFit)
+end
